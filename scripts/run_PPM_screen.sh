@@ -11,7 +11,7 @@ source /cds/home/s/seaberg/beamlineconda.sh
 parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 
 cd "$parent_path"
-cd ../PPM_centroid
+cd ../PPM_screen/PPM_centroid
 
 if [ $# -eq 1 ]; then
     IMAGER=$1
