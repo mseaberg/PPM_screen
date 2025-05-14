@@ -5,9 +5,13 @@
 #source /reg/g/pcds/pyps/apps/hutch-python/xpp/xppenv
 
 source /cds/home/s/seaberg/beamlineconda.sh
-export PYTHONPATH=$PYTHONPATH:/cds/home/s/seaberg/TMO_IP2/lcls_beamline_toolbox
+#export PYTHONPATH=$PYTHONPATH:/cds/home/s/seaberg/TMO_IP2/lcls_beamline_toolbox
 
-cd /cds/home/s/seaberg/TMO_IP2/Commissioning_Tools/PPM_centroid
+#cd /cds/home/s/seaberg/TMO_IP2/Commissioning_Tools/PPM_centroid
+parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+
+cd "$parent_path"
+cd ../PPM_centroid
 
 if [ $# -eq 1 ]; then
     IMAGER=$1
