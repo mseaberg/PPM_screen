@@ -130,7 +130,10 @@ class DataHandler:
 
         # initialize constants to zero
         for key in self.constant_keys:
-            self.data_dict[key] = 0.0
+            if key is 'tx':
+                self.data_dict[key] = '0'
+            else:
+                self.data_dict[key] = 0.0
 
         # initialize coordinates
         for key in self.coord_keys:
