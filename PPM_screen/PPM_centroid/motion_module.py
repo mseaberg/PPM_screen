@@ -13,24 +13,25 @@ class Calibration(QtCore.QThread):
         #super(Calibration, self).__init__()
         QtCore.QThread.__init__(self)
         self.data_handler = data_handler
-        self.mr2k4 = KBOMirror('MR2K4:KBO', name='mr2k4')
-        self.mr3k4 = KBOMirror('MR3K4:KBO', name='mr3k4')
-        try:
-            self.mr2k4.wait_for_connection()
-        except:
-            print('failed to connect to all mr2k4 signals')
-        try:
-            self.mr3k4.wait_for_connection()
-        except:
-            print('failed to connect to all mr3k4 signals')
+        self.mirror = None
+        #self.mr2k4 = KBOMirror('MR2K4:KBO', name='mr2k4')
+        #self.mr3k4 = KBOMirror('MR3K4:KBO', name='mr3k4')
+        #try:
+        #    self.mr2k4.wait_for_connection()
+        #except:
+        #    print('failed to connect to all mr2k4 signals')
+        #try:
+        #    self.mr3k4.wait_for_connection()
+        #except:
+        #    print('failed to connect to all mr3k4 signals')
 
     def run(self):
-        starting_point = self.mr2k4.pitch.position
+        starting_point = self.mirror.pitch.position
 
         for i in range(10):
-            self.mr2k4.pitch.mvr(1, wait=True)
+            self.mirror.pitch.mvr(1, wait=True)
             time.sleep(2)
-        self.mr2k4.pitch.mv(starting_point)
+        self.mirror.pitch.mv(starting_point)
         print('calibration complete')
         self.quit()
 

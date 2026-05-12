@@ -22,14 +22,10 @@ class DataHandler:
         self.timestamp_key = 'timestamps'
 
         # keys for data that is calculated on every shot
-        self.stripchart_imager_keys = ['cx', 'cy', 'wx', 'wy', 'intensity', 'centroid_is_valid', 'wavefront_is_valid']
-
-        # keys for wfs data that is calculated on every shot
-        self.stripchart_wfs_keys = ['z_x', 'z_y', 'rms_x', 'rms_y', 'coma_x', 'coma_y',
-                'focus_fwhm_horizontal', 'focus_fwhm_vertical']
+        self.stripchart_imager_keys = ['cx', 'cy', 'wx', 'wy', 'intensity', 'centroid_is_valid']
 
         # keys for all stripchart data
-        self.stripchart_all_keys = self.stripchart_imager_keys + self.stripchart_wfs_keys
+        self.stripchart_all_keys = self.stripchart_imager_keys
 
         # keys for smoothed data
         self.stripchart_smooth_keys = [key+'_smooth' for key in self.stripchart_all_keys]
@@ -37,26 +33,15 @@ class DataHandler:
         # keys for constants
         self.constant_keys = ['counter', 'pixSize', 'cx_ref', 'cy_ref', 'tx']
 
-        # self.valid_keys = ['centroid_is_valid', 'wavefront_is_valid']
-
         # keys for 1-D coordinates
         self.coord_keys = ['x', 'y']
-
-        # keys for wfs 1-D coordinates
-        self.wfs_coord_keys = ['x_prime', 'y_prime', 'xf']
 
         # keys for 1-D arrays updated every shot
         self.image_array_keys = ['lineout_x', 'lineout_y', 'projection_x',
                            'projection_y', 'fit_x', 'fit_y']
 
-        # keys for 1-D wfs arrays updated every shot
-        self.wfs_array_keys = ['x_res', 'y_res', 'focus_horizontal', 'focus_vertical']
-
         # keys for images updated every shot
         self.image_keys = ['profile']
-
-        # keys for wfs images updated every shot
-        self.wfs_image_keys = ['focus', 'F0', 'wave']
 
         # read file with PV names
         self.filename = self.local_path+'/pv_lists/{}_pvs.txt'.format(hutch.lower())
@@ -68,9 +53,7 @@ class DataHandler:
         self.epics_signals = {}
 
         # update keys that are allowed for plotting
-        self.initial_keys = ['timestamps', 'cx', 'cy', 'wx', 'wy', 'z_x', 'z_y', 'rms_x',
-                         'rms_y', 'intensity', 'coma_x', 'coma_y', 'centroid_is_valid', 'wavefront_is_valid',
-                         'focus_fwhm_horizontal', 'focus_fwhm_vertical']
+        self.initial_keys = ['timestamps', 'cx', 'cy', 'wx', 'wy', 'intensity', 'centroid_is_valid']
 
         self.key_list = copy(self.initial_keys)
 
@@ -153,21 +136,12 @@ class DataHandler:
         for key in self.coord_keys:
             self.data_dict[key] = np.linspace(-1024, 1023, 100)
 
-        for key in self.wfs_coord_keys:
-            self.data_dict[key] = np.linspace(-1024, 1023, 100)
-
         # initialize 1D array data
         for key in self.image_array_keys:
             self.data_dict[key] = np.zeros(100)
 
-        for key in self.wfs_array_keys:
-            self.data_dict[key] = np.zeros(100)
-
         # initialize image data
         for key in self.image_keys:
-            self.data_dict[key] = np.zeros((self.im_N, self.im_M))
-
-        for key in self.wfs_image_keys:
             self.data_dict[key] = np.zeros((self.im_N, self.im_M))
 
         # initialize pv data
@@ -208,9 +182,6 @@ class DataHandler:
         # standalone keys
         standalone_keys = self.image_array_keys + self.image_keys + self.coord_keys
 
-        # standalone wfs keys
-        wfs_array_keys = self.wfs_coord_keys + self.wfs_array_keys + self.wfs_image_keys
-
         # update dictionary
         for key in self.stripchart_imager_keys:
             self.update_1d_data(key, getattr(self.imager, key))
@@ -226,18 +197,6 @@ class DataHandler:
         # get non-stripchart data
         for key in standalone_keys:
             self.data_dict[key] = getattr(self.imager, key)
-
-        # get wfs data
-        if wfs_data is not None:
-            for key in self.stripchart_wfs_keys:
-                self.update_1d_data(key, wfs_data[key])
-
-            for key in wfs_array_keys:
-                self.data_dict[key] = wfs_data[key]
-
-        else:
-            for key in self.stripchart_wfs_keys:
-                self.update_1d_data(key, np.nan)
 
         # update validity data
         # for key in self.valid_keys:
@@ -260,11 +219,6 @@ class DataHandler:
             fps = 1.0
         tx = 'Mean Frame Rate:  {fps:.3f} FPS'.format(fps=fps)
         self.data_dict['tx'] = tx
-
-    def update_wfs_data(self, wfs_data):
-        for key in wfs_data.keys():
-            if key in self.image_keys:
-                self.data_dict[key] = wfs_data[key]
 
     def read_pv_names(self):
         # read pv names from the file

@@ -15,7 +15,6 @@ from PyQt5.uic import loadUiType
 from PyQt5.QtCore import Qt
 import warnings
 from processing_module import RunProcessing
-from Image_registration_epics import App
 import PPM_widgets
 from imager_data import DataHandler
 from motion_module import Calibration, Alignment
@@ -62,8 +61,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.plotButton.clicked.connect(self.make_new_plot)
         # method to save an image. Maybe replace and/or supplement this with image "recording" in the future
         self.actionSave.triggered.connect(self.save_image)
-        # open alignment screen for calculating center and pixel size
-        self.actionAlignment_Screen.triggered.connect(self.run_alignment_screen)
         #self.actionSave_with_hdf5_plugin.triggered.connect(self.save_hdf5)
         self.actionSave_with_hdf5_plugin.triggered.connect(self.capture_trajectory)
 
@@ -184,19 +181,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.imager_dict = {}
         for line in self.line_list:
             self.imager_dict[line] = [key for key in self.imager_info[line]]
-        # list of imagers with a wavefront sensor
-        #self.WFS_list = ['IM2K0', 'IM2L0', 'IM5K4', 'IM6K4', 'IM6K2', 'IM3K3', 'IM4L1']
-
-        # dictionary of wavefront sensor corresponding to imager
-        #self.WFS_dict = {
-        #    'IM2K0': 'PF1K0',
-        #    'IM2L0': 'PF1L0',
-        #    'IM5K4': 'PF1K4',
-        #    'IM6K4': 'PF2K4',
-        #    'IM6K2': 'PF1K2',
-        #    'IM3K3': 'PF1K3',
-        #    'IM4L1': 'PF1L1'
-        #}
 
         # initialize line combo box
         self.lineComboBox.addItems(self.line_list)
@@ -222,17 +206,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         cam_index = self.imager_list.index(cam)
         print(cam_index)
 
-        # set wavefront sensor attribute
-        #self.wfs_name = None
-
-        # make sure this initializes properly
-        #self.imagerpv_list = self.imagerpv_dict[self.line]
-        #self.imagerpv = self.imagerpv_list[cam_index]
-
         self.curr_imager_dict = self.imager_info[self.line][self.imager]
 
         self.imagerpv = self.curr_imager_dict['prefix']
-        #self.imagerpv = self.imager_info[self.line][self.imager]['prefix']
 
         self.imagerComboBox.clear()
         self.imagerComboBox.addItems(self.imager_list)
@@ -266,6 +242,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # attribute describing if trajectory is set
         self.trajectory_is_set = False
 
+    ## revisit this
     def calibrate(self):
         calib_plot = PPM_widgets.NewPlot(self, self.data_handler.plot_keys())
         calib_plot.xaxis_comboBox.setCurrentText('timestamps')
@@ -305,29 +282,13 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             if not self.unhappyCheckBox.isChecked():
                 self.trajectoryButton.setEnabled(False)
 
+    ## revisit this
     def align_focus(self):
 
-        # get current z position goals
-        try:
-            z_x_target = float(self.xFocusLineEdit.text())
-        except ValueError:
-            z_x_target = 0.0
-            self.xFocusLineEdit.setText('0.0')
-        try:
-            z_y_target = float(self.yFocusLineEdit.text())
-        except ValueError:
-            z_y_target = 0.0
-            self.yFocusLineEdit.setText('0.0')
 
         # disable alignment button
         self.alignmentButton.setEnabled(False)
 
-        goals = {
-            'x': np.array([z_x_target, 0]),
-            'y': np.array([z_y_target, 0])
-        }
-
-        self.alignment_message = QtWidgets.QMessageBox()
         self.align = Alignment(self.data_handler, self.curr_imager_dict, goals)
         self.align.sig_finished.connect(self.alignment_finished)
 
@@ -374,17 +335,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def enable_align(self):
         #if self.wfs_name=='PF1K4':
-        try:
-            if 'hutch' in self.curr_imager_dict.keys():
-                allowed_hutch = self.hutch.lower()==self.curr_imager_dict['hutch']
-            else:
-                allowed_hutch = False
-            wfs_exists = self.wfs_name is not None
-            wfs_calc = self.wavefrontCheckBox.isChecked()
-            if allowed_hutch and wfs_exists and wfs_calc:
-                self.alignmentButton.setEnabled(True)
-        except:
-            print('image_info.json file is incomplete')
+        self.alignmentButton.setEnabled(True)
 
     def make_new_plot(self):
         plot_window = PPM_widgets.NewPlot(self, self.data_handler.plot_keys())
@@ -558,16 +509,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
                if isinstance(single_item, pg.graphicsItems.LabelItem.LabelItem):
                    single_item.setText(single_item.text, **legendLabelStyle)
 
-    def run_alignment_screen(self):
-        """
-        Method to open the alignment screen
-        """
-
-        cam_name = self.imagerpv
-
-        alignment_app = App(parent=self, imager=cam_name)
-        alignment_app.show()
-
     def change_line(self, index):
         """
         Method to change which beamline from which to select an imager.
@@ -652,18 +593,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.runButton.text() == 'Run':
 
             self.runButton.setEnabled(False)
-
-            # check if we are going to calculate the wavefront. Set wfs_name to None if not.
-            #if self.wavefrontCheckBox.isChecked():
-            #    wfs_name = self.wfs_name
-            #else:
-            #    wfs_name = None
-
-            # get Talbot fraction. This will eventually be automated based on the photon energy and WFS state.
-            #try:
-            #    fraction = float(self.wfsControls.fractionLineEdit.text())
-            #except ValueError:
-            #    fraction = 1
             
             # initialize a new thread
             self.thread = QtCore.QThread()
@@ -692,14 +621,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
             # update viewboxes based on FOV
             self.imageWidget.update_viewbox(width, height)
-            #if self.displayWidget.display_choice == 'Focus':
-            #    self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
-            #elif self.displayWidget.display_choice == 'Fourier transform':
-            #    FFT_width = 1/self.processing.PPM_object.dxm
-            #    self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
-            #else:
-                # this would eventually change for the FFT option
-            #    self.wavefrontWidget.update_viewbox(width, height)
 
             # update crosshair sizes
             self.crosshairsWidget.update_crosshair_width()
@@ -726,8 +647,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             # change the button state
             self.runButton.setText('Stop')
             #self.runButton.setEnabled(True)
-            # disable wavefront sensor checkbox until stop is pressed
-            #self.wavefrontCheckBox.setEnabled(False)
             self.imagerStats.roiCheckBox.setEnabled(False)
             self.imagerStats.thresholdLineEdit.setEnabled(False)
 
@@ -752,11 +671,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.runButton.setText('Run')
             self.calibrateButton.setEnabled(False)
             self.alignmentButton.setEnabled(False)
-            # re-enable wavefront sensor checkbox if imager is has a wavefront sensor
-            #if self.imager in self.WFS_list:
-            #if 'wfs' in self.curr_imager_dict.keys():
-
-            #    self.wavefrontCheckBox.setEnabled(True)
 
             #self.runButton.setEnabled(True)
             # re-enable imager selection
@@ -808,7 +722,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # make sure a file name was chosen
         if not filename[0] == '':
             # normalize the image and write to file
-            im = App.normalize_image(self.data_handler.data_dict['profile'])
+            im = self.normalize_image(self.data_handler.data_dict['profile'])
             filename = PPM_Interface.get_filename(filename, fmt='.png')
             imageio.imwrite(filename,im)
         print(filename)
@@ -863,19 +777,12 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # get validity
         centroid_validity = data_dict['centroid_is_valid']
-        wavefront_validity = data_dict['wavefront_is_valid']
 
         # check if the most recent measurement was valid
         if centroid_validity[-1]:
             self.groupBox_3.setStyleSheet("QGroupBox#CentroidStatsGroupBox { border: 2px solid green;}")
         else:
             self.groupBox_3.setStyleSheet("QGroupBox#CentroidStatsGroupBox { border: 2px solid red;}")
-
-        # check if the most recent measurement was valid
-        #if wavefront_validity[-1]:
-        #    self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid green;}")
-        #else:
-        #    self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid red;}")
 
         x = data_dict['x']
         y = data_dict['y']
@@ -887,43 +794,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         fit_x = data_dict['fit_x']
         fit_y = data_dict['fit_y']
 
-        # wfs widget plots
-        x_prime = data_dict['x_prime']
-        y_prime = data_dict['y_prime']
-        x_res = data_dict['x_res']
-        y_res = data_dict['y_res']
-        x_res_fit = np.zeros_like(x_res)
-        y_res_fit = np.zeros_like(y_res)
-
         # update main image and lineouts
         self.imageWidget.update_plots(image_data, x, y, xprojection, yprojection, fit_x, fit_y, 
                 xlineout_data=xlineout, ylineout_data=ylineout)
-
-        # update wavefront tab
-        #if self.wavefrontCheckBox.isChecked():
-
-            # get focus coordinates
-        #    xf = data_dict['xf']
-
-            # check what is supposed to be displayed. Would be nice to also clean this up
-        #    if self.displayWidget.display_choice == 'Focus':
-        #        xline = data_dict['focus_horizontal']
-        #        yline = data_dict['focus_vertical']
-        #        self.wavefrontWidget.update_plots(data_dict['focus'], xf, xf, xline, yline, xline, yline)
-        #    elif self.displayWidget.display_choice == 'Fourier transform':
-        #        self.wavefrontWidget.update_plots(data_dict['F0'], x, y, xprojection, yprojection, fit_x, fit_y)
-        #    elif self.displayWidget.display_choice == 'Phase':
-        #        self.wavefrontWidget.update_plots(data_dict['wave'], x_prime, y_prime, x_res, y_res, x_res, y_res)
-
-            # update wavefront tab stripchart plots
-        #    self.focus_plot.update_plots(data_dict['timestamps'], x=data_dict['z_x'], y=data_dict['z_y'], x_smooth=data_dict['z_x_smooth'], y_smooth=data_dict['z_y_smooth'])
-        #    self.rms_plot.update_plots(data_dict['timestamps'], x=data_dict['coma_x'], y=data_dict['coma_y'], x_smooth=data_dict['rms_x_smooth'], y_smooth=data_dict['rms_y_smooth'])
-
-        #    self.wfsStats.update_stats(data_dict)
-
-        # update centroid plots
-        #self.centroid_plot.update_plots(data_dict['timestamps'], x=data_dict['cx'], y=data_dict['cy'], x_smooth=data_dict['cx_smooth'], y_smooth=data_dict['cy_smooth'])
-        #self.width_plot.update_plots(data_dict['timestamps'], x=data_dict['wx'], y=data_dict['wy'], x_smooth=data_dict['wx_smooth'], y_smooth=data_dict['wy_smooth'])
 
         self.label.setText(data_dict['tx'])
 
