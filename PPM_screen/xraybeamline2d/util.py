@@ -2,16 +2,10 @@
 util module for xraybeamline2d package
 """
 import numpy as np
-try:
-    import cupy as xp
-    import cupyx.scipy as sp
-except ImportError:
-    import numpy as xp
-    import scipy as sp
+import numpy.fft as fft
 import scipy.special
 import scipy.optimize as optimize
 import scipy.spatial.transform as transform
-from scipy.integrate import cumtrapz
 
 
 class Util:
@@ -41,222 +35,6 @@ class Util:
         return y
 
     @staticmethod
-    def laplace(array,p,q):
-        # xp = cp.get_array_module(array)
-        # sp = cupyx.scipy.get_array_module(array)
-
-        N,M = xp.shape(array)
-        out = -sp.fft.idctn(sp.fft.dctn(array) * (p ** 2 + q ** 2)) * 4 * np.pi ** 2 / (N * M)
-        return out
-
-    @staticmethod
-    def inverse_laplace(array,p,q):
-        # xp = cp.get_array_module(array)
-        # sp = cupyx.scipy.get_array_module(array)
-
-        N, M = xp.shape(array)
-        out = -sp.fft.idctn(sp.fft.dctn(array) / (p ** 2 + q ** 2 + np.finfo(float).eps)) * M * N / (4 * np.pi ** 2)
-        return out
-
-    @staticmethod
-    def solvePoisson(array, pix=1):
-        # xp = cp.get_array_module(array)
-        # sp = cupyx.scipy.get_array_module(array)
-
-        N, M = xp.shape(array)
-        rho_hat = sp.fft.dctn(array)
-        i = xp.linspace(0, M - 1, M)
-        j = xp.linspace(0, N - 1, N)
-        i, j = xp.meshgrid(i, j)
-        divisor = 2 * (xp.cos(np.pi * i / M) + xp.cos(np.pi * j / N) - 2)
-        divisor[0, 0] = 1
-        phi_hat = rho_hat / divisor
-        phi_hat[0, 0] = 0
-        phi = sp.fft.idctn(phi_hat) * pix**2
-
-        return phi
-
-    @staticmethod
-    def applyQ(p, WW, pix=1):
-        # xp = cp.get_array_module(p)
-
-        N, M = xp.shape(p)
-        dx = xp.hstack((xp.diff(p, axis=1), xp.zeros((N, 1)))) / pix
-        dy = xp.vstack((xp.diff(p, axis=0), xp.zeros((1, M)))) / pix
-
-        WWdx = WW * dx
-        WWdy = WW * dy
-
-        WWdx2 = xp.hstack((xp.zeros((N, 1)), WWdx))
-        WWdy2 = xp.vstack((xp.zeros((1, M)), WWdy))
-        Qp = xp.diff(WWdx2, axis=1) / pix + xp.diff(WWdy2, axis=0) / pix
-
-        return Qp
-
-    @staticmethod
-    def wrapToPi(array):
-        # xp = cp.get_array_module(array)
-
-        out = xp.mod(array, 2 * np.pi)
-        out[out > np.pi] -= 2 * np.pi
-        return out
-
-    @staticmethod
-    def laplacian_from_gradient(grad_x, grad_y, pix=1, weight=None):
-        N, M = xp.shape(grad_x)
-
-        if weight is None:
-            weight = xp.ones_like(grad_x)
-
-        WWdx2 = xp.hstack((xp.zeros((N,1)), grad_x * weight))
-        WWdy2 = xp.vstack((xp.zeros((1,M)), grad_y * weight))
-
-        laplacian = xp.diff(WWdx2, axis=1) / pix + xp.diff(WWdy2, axis=0) / pix
-
-        return laplacian
-
-    @staticmethod
-    def integrate_gradient_gpu(grad_x, grad_y, pix=1, weight=None, eps=1e-8):
-        # xp = cp.get_array_module(psi)
-
-        N, M = xp.shape(grad_x)
-        # dx = xp.hstack((Util.wrapToPi(xp.diff(psi, axis=1)), xp.zeros((N, 1))))
-        # dy = xp.vstack((Util.wrapToPi(xp.diff(psi, axis=0)), xp.zeros((1, M))))
-
-        if weight is None:
-            weight = xp.ones_like(grad_x)
-
-        WW = weight * weight
-        # WWdx = WW * dx
-        # WWdy = WW * dy
-        #
-        # WWdx2 = xp.hstack((xp.zeros((N, 1)), WWdx))
-        # WWdy2 = xp.vstack((xp.zeros((1, M)), WWdy))
-        # rk = xp.diff(WWdx2, axis=1) + xp.diff(WWdy2, axis=0)
-        rk = Util.laplacian_from_gradient(grad_x, grad_y, pix=pix, weight=WW)
-        normR0 = xp.linalg.norm(rk.flatten())
-
-        k = 0
-        phi = xp.zeros_like(grad_x)
-
-        rk_old = xp.copy(rk)
-        zk_old = xp.zeros_like(rk)
-        zk = xp.zeros_like(rk)
-        pk = xp.zeros_like(rk)
-        beta = 0
-        alpha = 0
-
-        # norm1 = cp.zeros(50)
-
-        while xp.sum(xp.abs(rk)) > 0:
-            zk = Util.solvePoisson(rk, pix=pix)
-
-            k += 1
-
-            if k == 1:
-                pk = zk
-            else:
-                beta = xp.dot(rk.flatten(), zk.flatten()) / xp.dot(rk_old.flatten(), zk_old.flatten())
-                pk = zk + beta * pk
-            # print(k)
-            # print(beta)
-
-            rk_old = xp.copy(rk)
-            zk_old = xp.copy(zk)
-
-            Qpk = Util.applyQ(pk, WW, pix=pix)
-
-            alpha = xp.dot(rk.flatten(), zk.flatten()) / xp.dot(pk.flatten(), Qpk.flatten())
-            # print(alpha)
-            phi = phi + alpha * pk
-            rk = rk - alpha * Qpk
-
-            # norm1[k - 1] = cp.linalg.norm(rk.flatten())
-            # print(cp.linalg.norm(rk.flatten()))
-            if xp.linalg.norm(rk.flatten()) < eps * normR0 or k>20:
-                print('phase unwrap stopping after {} iterations'.format(k))
-
-                break
-
-        return phi
-
-    @staticmethod
-    def unwrap_phase_gpu(psi, weight, eps=1e-8):
-        # xp = cp.get_array_module(psi)
-
-        N, M = xp.shape(psi)
-        dx = xp.hstack((Util.wrapToPi(xp.diff(psi, axis=1)), xp.zeros((N, 1))))
-        dy = xp.vstack((Util.wrapToPi(xp.diff(psi, axis=0)), xp.zeros((1, M))))
-
-        WW = weight * weight
-        WWdx = WW * dx
-        WWdy = WW * dy
-
-        WWdx2 = xp.hstack((xp.zeros((N, 1)), WWdx))
-        WWdy2 = xp.vstack((xp.zeros((1, M)), WWdy))
-        rk = xp.diff(WWdx2, axis=1) + xp.diff(WWdy2, axis=0)
-        normR0 = xp.linalg.norm(rk.flatten())
-
-        k = 0
-        phi = xp.zeros_like(psi)
-
-        rk_old = xp.copy(rk)
-        zk_old = xp.zeros_like(rk)
-        zk = xp.zeros_like(rk)
-        pk = xp.zeros_like(rk)
-        beta = 0
-        alpha = 0
-
-        # norm1 = cp.zeros(50)
-
-        while xp.sum(xp.abs(rk)) > 0:
-            zk = Util.solvePoisson(rk)
-
-            k += 1
-
-            if k == 1:
-                pk = zk
-            else:
-                beta = xp.dot(rk.flatten(), zk.flatten()) / xp.dot(rk_old.flatten(), zk_old.flatten())
-                pk = zk + beta * pk
-            # print(k)
-            # print(beta)
-
-            rk_old = xp.copy(rk)
-            zk_old = xp.copy(zk)
-
-            Qpk = Util.applyQ(pk, WW)
-
-            alpha = xp.dot(rk.flatten(), zk.flatten()) / xp.dot(pk.flatten(), Qpk.flatten())
-            # print(alpha)
-            phi = phi + alpha * pk
-            rk = rk - alpha * Qpk
-
-            # norm1[k - 1] = cp.linalg.norm(rk.flatten())
-            # print(cp.linalg.norm(rk.flatten()))
-            if xp.linalg.norm(rk.flatten()) < eps * normR0 or k>20:
-                print('phase unwrap stopping after {} iterations'.format(k))
-
-                break
-
-        return phi
-
-    # @staticmethod
-    # def unwrap_phase_gpu(array):
-    #     p,q = Util.get_spatial_frequencies(array,1)
-    #     p = sfft.fftshift(p)
-    #     q = sfft.fftshift(q)
-    #
-    #     L_wrapped = Util.laplace(array, p, q)
-    #     L_unwrapped = (cp.cos(array) * Util.laplace(cp.sin(array), p, q) -
-    #                    cp.sin(array) * Util.laplace(cp.cos(array), p, q))
-    #     k = cp.round(Util.inverse_laplace(L_unwrapped - L_wrapped, p, q) / 2 / np.pi)
-    #
-    #     unwrapped = array + 2 * np.pi * k
-    #
-    #     return unwrapped, k
-
-    @staticmethod
     def nfft(a):
         """
         Class method for 2D FFT with zero frequency at center
@@ -265,9 +43,8 @@ class Util:
         :return: (N,M) ndarray
             Fourier transformed array of same shape as a
         """
-        # xp = cp.get_array_module(a)
 
-        return xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(a)))
+        return fft.fftshift(fft.fft2(fft.ifftshift(a)))
 
     @staticmethod
     def nfft1(a):
@@ -278,9 +55,8 @@ class Util:
         :return: (N,M) ndarray
             Fourier transformed array of same shape as a
         """
-        # xp = cp.get_array_module(a)
 
-        return xp.fft.fftshift(xp.fft.fft(xp.fft.ifftshift(a)))
+        return fft.fftshift(fft.fft(fft.ifftshift(a)))
 
     @staticmethod
     def infft(a):
@@ -291,9 +67,8 @@ class Util:
         :return: (N,M) ndarray
             Array after inverse Fourier transform, same shape as a
         """
-        # xp = cp.get_array_module(a)
 
-        return xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(a)))
+        return fft.fftshift(fft.ifft2(fft.ifftshift(a)))
 
     @staticmethod
     def infft1(a):
@@ -304,9 +79,8 @@ class Util:
         :return: (N,M) ndarray
             Array after inverse Fourier transform, same shape as a
         """
-        # xp = cp.get_array_module(a)
 
-        return xp.fft.fftshift(xp.fft.ifft(xp.fft.ifftshift(a)))
+        return fft.fftshift(fft.ifft(fft.ifftshift(a)))
 
     @staticmethod
     def fit_sinc_squared(x, x0, w):
@@ -513,20 +287,18 @@ class Util:
         :return values: (N,) array-like
             Evaluated polynomial at points in x.
         """
-        # xp = cp.get_array_module(x)
 
         # remove low orders
-        p2 = np.copy(p)
-        p2[-3:] = 0
+        p[-3:] = 0
 
         # print('high order polycoeff: ' + str(p))
 
         # get polynomial order
-        M = np.size(p2) - 1
+        M = np.size(p) - 1
 
-        values = xp.zeros_like(x)
+        values = np.zeros_like(x)
 
-        for num, coeff in enumerate(p2):
+        for num, coeff in enumerate(p):
             # order of current coefficient
             n = M - num
 
@@ -548,17 +320,16 @@ class Util:
         """
 
         # remove low orders
-        p2 = np.copy(p)
-        p2[-2:] = 0
+        p[-2:] = 0
 
         # print('high order polycoeff: ' + str(p))
 
         # get polynomial order
-        M = np.size(p2) - 1
+        M = np.size(p) - 1
 
         values = np.zeros_like(x)
 
-        for num, coeff in enumerate(p2):
+        for num, coeff in enumerate(p):
             # order of current coefficient
             n = M - num
 
@@ -623,16 +394,15 @@ class Util:
         :return array_out: array-like
             thresholded array, same shape as array_in
         """
-        # xp = cp.get_array_module(array_in)
 
         # make sure the image is not complex
-        array_out = xp.abs(array_in)
+        array_out = np.abs(array_in)
 
         # subtract minimum/background
-        array_out -= xp.min(array_out)
+        array_out -= np.min(array_out)
 
         # get thresholding level
-        thresh = xp.max(array_out) * frac
+        thresh = np.max(array_out) * frac
         # subtract threshold level
         array_out = array_out - thresh
         # set anything below threshold (now 0) to zero
@@ -683,9 +453,7 @@ class Util:
         lineout: (2*half_length) ndarray
             Summed lineout from array_in (projected on horizontal axis)
         """
-        # xp = cp.get_array_module(array_in)
-
-        N, M = xp.shape(array_in)
+        N, M = np.shape(array_in)
 
         if x_center is None:
             x_center = int(M/2)
@@ -706,10 +474,7 @@ class Util:
             y_start = int(y_center - half_width)
             y_end = int(y_center + half_width)
 
-        if half_width < 1:
-            lineout = array_in[y_start, x_start:x_end]
-        else:
-            lineout = xp.sum(array_in[y_start:y_end, x_start:x_end], axis=0)
+        lineout = np.sum(array_in[y_start:y_end, x_start:x_end], axis=0)
 
         return lineout
 
@@ -735,9 +500,7 @@ class Util:
         lineout: (2*half_length) ndarray
             Summed lineout from array_in (projected on horizontal axis)
         """
-        # xp = cp.get_array_module(array_in)
-
-        N, M = xp.shape(array_in)
+        N, M = np.shape(array_in)
 
         if x_center is None:
             x_center = int(M/2)
@@ -758,10 +521,7 @@ class Util:
             y_start = int(y_center - half_length)
             y_end = int(y_center + half_length)
 
-        if half_width < 1:
-            lineout = array_in[y_start:y_end, x_start]
-        else:
-            lineout = xp.sum(array_in[y_start:y_end, x_start:x_end], axis=1)
+        lineout = np.sum(array_in[y_start:y_end, x_start:x_end], axis=1)
 
         return lineout
 
@@ -780,18 +540,16 @@ class Util:
         -------
         tuple of coordinate arrays with same shape as array_in
         """
-        # xp = cp.get_array_module(array_in)
-
-        array_shape = xp.shape(array_in)
+        array_shape = np.shape(array_in)
 
         coord_list = []
 
         for dimension in array_shape:
-            c = xp.linspace(-dimension / 2., dimension / 2. - 1, dimension, dtype=float) * dx
+            c = np.linspace(-dimension / 2., dimension / 2. - 1, dimension, dtype=float) * dx
             coord_list.append(c)
 
         # make grid of spatial frequencies
-        coord_tuple = xp.meshgrid(*coord_list)
+        coord_tuple = np.meshgrid(*coord_list)
 
         return coord_tuple
 
@@ -810,9 +568,8 @@ class Util:
         -------
         tuple of spatial frequency arrays. Length of tuple depends is the same as length of shape.
         """
-        # xp = cp.get_array_module(array_in)
 
-        array_shape = xp.shape(array_in)
+        array_shape = np.shape(array_in)
 
         # maximum spatial frequency
         fx_max = 1.0 / (dx * 2)
@@ -822,11 +579,11 @@ class Util:
 
         for dimension in array_shape:
             df = 2 * fx_max / dimension
-            f = xp.linspace(-dimension / 2., dimension / 2. - 1, dimension, dtype=float) * df
+            f = np.linspace(-dimension / 2., dimension / 2. - 1, dimension, dtype=float) * df
             f_list.append(f)
 
         # make grid of spatial frequencies
-        fx_tuple = xp.meshgrid(*f_list)
+        fx_tuple = np.meshgrid(*f_list)
 
         return fx_tuple
 
@@ -849,14 +606,13 @@ class Util:
         -------
         array of same shape as any of the arrays in frequencies.
         """
-        # xp = cp.get_array_module(frequencies)
 
         # check if frequencies is a tuple
         if type(frequencies) is tuple:
-            array_size = xp.shape(frequencies[0])
+            array_size = np.shape(frequencies[0])
             num_arrays = len(frequencies)
         else:
-            array_size = xp.shape(frequencies)
+            array_size = np.shape(frequencies)
             num_arrays = 1
 
         # check size of locations tuple
@@ -886,7 +642,7 @@ class Util:
             radii = [first_width] * num_coords
 
         # initialize left hand side of inequality
-        lhs = xp.zeros(array_size)
+        lhs = np.zeros(array_size)
 
         # loop through coordinates
         for f, c, r in zip(frequencies, coordinates, radii):
@@ -898,7 +654,7 @@ class Util:
         # add cosine filter if desired
         if cosine_mask:
             for f, c, r in zip(frequencies, coordinates, radii):
-                mask *= xp.cos(np.pi/2*(f-c)/r)
+                mask *= np.cos(np.pi/2*(f-c)/r)
 
         return mask
 
@@ -917,10 +673,9 @@ class Util:
         -------
         (N/downsampling,M/downsampling) ndarray
         """
-        # xp = cp.get_array_module(array_in)
 
         # get array shape
-        N, M = xp.shape(array_in)
+        N, M = np.shape(array_in)
 
         # fourier transform
         fourier_plane = Util.nfft(array_in)
@@ -950,9 +705,8 @@ class Util:
         -------
         (y_width,x_width) ndarray
         """
-        # xp = cp.get_array_module(array_in)
 
-        N, M = xp.shape(array_in)
+        N, M = np.shape(array_in)
 
         cropped_array = array_in[int(N / 2 - y_width/2):int(N / 2 + y_width/2),
                                  int(M / 2 - x_width/2):int(M / 2 + x_width/2)]
@@ -967,12 +721,12 @@ class Util:
         return norm_data
 
     @staticmethod
-    def gaussian_stats(x_data, y_data):
+    def gaussian_stats(x_data, y_data, thresh=0.1):
 
         # normalize input (and subtract any offset)
         y_norm = Util.normalize_trace(y_data)
         # threshold input
-        y_data_thresh = Util.threshold_array(y_norm, 0.1)
+        y_data_thresh = Util.threshold_array(y_norm, thresh)
 
         # calculate centroid
         cx = np.sum(y_data_thresh * x_data) / np.sum(y_data_thresh)
@@ -1013,140 +767,3 @@ class Util:
         # beam points in z direction
         k = z
         return k
-
-    @staticmethod
-    def rotate_3d(xhat, yhat, zhat, delta=0, dir='azimuth'):
-
-        if dir=='elevation':
-            # an "elevation" rotation corresponds to a rotation about the xhat unit vector
-            r1 = transform.Rotation.from_rotvec(-xhat * delta)
-            Rx = r1.as_matrix()
-            xhat = np.matmul(Rx, xhat)
-            yhat = np.matmul(Rx, yhat)
-            zhat = np.matmul(Rx, zhat)
-        elif dir=='azimuth':
-            # an azimuth rotation corresponds to a rotation about the yhat unit vector
-            r2 = transform.Rotation.from_rotvec(yhat * delta)
-            Ry = r2.as_matrix()
-            xhat = np.matmul(Ry, xhat)
-            yhat = np.matmul(Ry, yhat)
-            zhat = np.matmul(Ry, zhat)
-
-        return xhat, yhat, zhat
-
-    @staticmethod
-    def plan_checkerboard(wfs_obj, ppm_obj, photon_energy, fraction=1):
-
-        # distance from focus to grating
-        R1 = wfs_obj.f0
-        # "Talbot" distance
-        zT = ppm_obj.z - wfs_obj.z
-        # distance from focus to imager
-        R2 = R1 + zT
-        lambda0 = 1239.8/photon_energy*1e-9
-
-        d = np.sqrt(lambda0/fraction*8*R1*(1-R1/R2))
-
-        return d
-
-    @staticmethod
-    def integrate_gradient(g, h, x=None, y=None):
-        """
-        Method to integrate a 2D gradient.
-        Parameters
-        ----------
-        g: (N,M) ndarray
-            horizontal gradient term (df_dx)
-        h: (N,M) ndarray
-            vertical gradient term (df_dy)
-        x: (M) ndarray
-            horizontal coordinates (1D)
-        y: (N) ndarray
-            vertical coordinates (1D)
-
-        Returns
-        -------
-        f: (N,M) ndarray
-            the scalar field corresponding to the integrated gradient
-        """
-        if x is None:
-            dx = 1
-        else:
-            dx = x[1]-x[0]
-        if y is None:
-            dy = 1
-        else:
-            dy = y[1]-y[0]
-
-        # calculate second order mixed partial derivatives
-        dg_dy = np.gradient(g, dy, axis=0)
-        dh_dx = np.gradient(h, dx, axis=1)
-
-        # integrate the gradient (average mixed partial derivatives since these are
-        # supposed to be equal)
-        f = (cumtrapz(g, axis=1, dx=dx, initial=0) +
-             cumtrapz(h, axis=0, dx=dy, initial=0) -
-            cumtrapz(cumtrapz(.5*(dg_dy+dh_dx), axis=0, dx=dy, initial=0),
-                     axis=1, dx=dx, initial=0))
-
-        return f
-
-
-class LegendreUtil:
-
-    def __init__(self, x, y, deg, recenter=True):
-        self.N = x.size
-        # if self.N > 0
-        #     self.dx = np.abs(x[1] - x[0])
-        # else:
-        #     self.dx = 0
-        self.x_center = np.mean(x)
-        if recenter:
-            self.x_centered = x - self.x_center
-        else:
-            self.x_centered = x
-
-        if self.N > 0:
-            self.scale = np.max(np.abs(self.x_centered))
-        else:
-            self.scale = 1
-
-        self.x_norm = self.x_centered / self.scale
-        self.x = x
-        self.deg = deg
-
-        if self.N > 0:
-            self.c = np.polynomial.legendre.legfit(self.x_norm, y, deg)
-        else:
-            self.c = np.zeros(deg+1)
-
-    def legint(self, m):
-        if self.N > 0:
-            self.c = np.polynomial.legendre.legint(self.c, m)*(self.scale)**m
-            self.deg += m
-        else:
-            self.deg += m
-            self.c = np.zeros(self.deg+1)
-
-    def legder(self, m):
-        if self.N > 0:
-            self.c = np.polynomial.legendre.legder(self.c, m)/(self.scale)**m
-            self.deg -= m
-        else:
-            self.deg -= m
-            self.c = np.zeros(self.deg+1)
-
-    def legval(self, deg=None):
-
-        if deg is None:
-            deg = self.deg
-
-        return np.polynomial.legendre.legval(self.x_norm, self.c[:deg+1])
-
-    def quad_coeff(self):
-
-        return self.c[2] * 3 / 2 / (self.scale) ** 2
-
-    def linear_coeff(self):
-
-        return self.c[1] / (self.scale)

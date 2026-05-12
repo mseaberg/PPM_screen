@@ -5,11 +5,11 @@ import scipy.ndimage as ndimage
 import time
 from pyqtgraph.Qt import QtCore
 #from pcdsdevices.areadetector.detectors import PCDSAreaDetector
-from ..xraybeamline2d import optics
-from ..polyprojection.legendre import LegendreFit2D
+from lcls_beamline_toolbox.xraybeamline2d import optics
+from lcls_beamline_toolbox.polyprojection.legendre import LegendreFit2D
 import sys
 import pandas as pd
-from .analysis_tools import YagAlign
+from analysis_tools import YagAlign
 from datetime import datetime
 from ophyd import EpicsSignalRO as SignalRO
 from imager_data import DataHandler
@@ -22,14 +22,29 @@ class RunProcessing(QtCore.QObject):
     sig_initialized = QtCore.pyqtSignal()
     sig_finished = QtCore.pyqtSignal()
 
-    def __init__(self, imager_prefix, data_handler, averageWidget, wfs_name=None, threshold=0.1, focusFOV=10, fraction=1, focus_z=0, displayWidget=None, thread=None, hutch=None):
+    def __init__(self, imager_prefix, data_handler, averageWidget, wfs_name=None, threshold=0.1, focusFOV=10, fraction=1, focus_z=0, displayWidget=None, thread=None, hutch=None, crossWidget=None):
         super(RunProcessing, self).__init__()
         #QtCore.QThread.__init__(self)
 
         self.thread = thread
         self.hutch = hutch
 
+        if crossWidget is not None:
+            try:
+                x1 = float(crossWidget.red_x.text())
+                y1 = float(crossWidget.red_y.text())
+                x2 = float(crossWidget.blue_x.text())
+                y2 = float(crossWidget.blue_y.text())
+                roi = [x1,y1,x2,y2]
+            except:
+                roi = None
+
+        else:
+            roi = None
+
         self.hutch_path = '/cds/home/opr/{}opr'.format(self.hutch.lower())
+        if 'L2' in imager_prefix:
+            self.hutch_path = '/sdf/home/x/xppopr'
 
         # get wavefront sensor (may be None)
         self.wfs_name = wfs_name
@@ -49,7 +64,7 @@ class RunProcessing(QtCore.QObject):
             self.WFS_object = None
 
         # PPM object for image acquisition and processing
-        self.PPM_object = optics.PPM_Device(imager_prefix, average=averageWidget, threshold=self.threshold)
+        self.PPM_object = optics.PPM_Device(imager_prefix, average=averageWidget, threshold=self.threshold,roi=roi)
 
         # frame rate initialization
         self.fps = 0.
@@ -286,7 +301,7 @@ class RunRegistration(QtCore.QObject):
 
                 # self.im1 = np.ones((2048,2048))*255
                 self.PPM_object.get_image()
-                self.im1 = self.PPM_object.np_profile
+                self.im1 = self.PPM_object.profile
                 self.update_1d_data('timestamps', self.PPM_object.time_stamp)
 
             else:

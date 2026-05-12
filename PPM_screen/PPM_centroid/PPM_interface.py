@@ -14,12 +14,12 @@ import pyqtgraph as pg
 from PyQt5.uic import loadUiType
 from PyQt5.QtCore import Qt
 import warnings
-from .processing_module import RunProcessing
-from .Image_registration_epics import App
-from . import PPM_widgets
-from .imager_data import DataHandler
-from .motion_module import Calibration, Alignment
-from .io_module import ImagerHdf5, ElogHandler
+from processing_module import RunProcessing
+from Image_registration_epics import App
+import PPM_widgets
+from imager_data import DataHandler
+from motion_module import Calibration, Alignment
+from io_module import ImagerHdf5, ElogHandler
 from subprocess import check_output
 import os
 
@@ -64,7 +64,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.actionSave.triggered.connect(self.save_image)
         # open alignment screen for calculating center and pixel size
         self.actionAlignment_Screen.triggered.connect(self.run_alignment_screen)
-        self.actionSave_with_hdf5_plugin.triggered.connect(self.save_hdf5)
+        #self.actionSave_with_hdf5_plugin.triggered.connect(self.save_hdf5)
+        self.actionSave_with_hdf5_plugin.triggered.connect(self.capture_trajectory)
+
         self.actionPost_to_elog.triggered.connect(self.elog_post)
         self.trajectoryButton.clicked.connect(self.capture_trajectory)
 
@@ -172,6 +174,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         with open(self.local_path+'/imager_info.json') as json_file:
             self.imager_info = json.load(json_file)
 
+        with open(self.local_path + '/imagers.db') as json_file:
+            self.imager_metadata = json.load(json_file)
+
         # list of beamlines
         self.line_list = [key for key in self.imager_info]
 
@@ -179,7 +184,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.imager_dict = {}
         for line in self.line_list:
             self.imager_dict[line] = [key for key in self.imager_info[line]]
-
         # list of imagers with a wavefront sensor
         #self.WFS_list = ['IM2K0', 'IM2L0', 'IM5K4', 'IM6K4', 'IM6K2', 'IM3K3', 'IM4L1']
 
@@ -416,14 +420,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         """
         try:
             # read the imagers.db file
-            with open('/cds/home/s/seaberg/Commissioning_Tools/PPM_centroid/imagers.db') as json_file:
-                data = json.load(json_file)
+            #with open('/cds/home/s/seaberg/Commissioning_Tools/PPM_centroid/imagers.db') as json_file:
+            #    data = json.load(json_file)
             # set orientation from the file
-            self.orientation = data[self.imager]['orientation']
-            print('using orientation %s' % self.orientation)
-        except json.decoder.JSONDecodeError:
-            # catch the exception that the file doesn't exist
-            self.orientation = 'action0'
+            #self.orientation = data[self.imager]['orientation']
+            self.orientation = self.imager_metadata[self.imager]['orientation']
         except KeyError:
             # catch the exception that the orientation hasn't been saved for this imager
             print('orientation not set, using 0.')
@@ -510,7 +511,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         return basename
 
     def save_hdf5(self, basename=None):
-        if basename is None:
+        #if basename is None:
+        if not isinstance(basename,str):
             basename = self.get_basename()
         self.imager_h5.prepare(baseName=basename+'_images', nImages=10)
         self.imager_h5.write()
@@ -667,8 +669,15 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.thread = QtCore.QThread()
 
             # initialize processing object. This really needs a dictionary as input...
-            self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget, wfs_name=wfs_name,
+            
+            if self.imagerStats.roiCheckBox.isChecked():
+                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget, wfs_name=wfs_name,
+                                            threshold=self.imagerStats.get_threshold(), focusFOV=self.displayWidget.FOV, fraction=fraction, focus_z=self.displayWidget.focus_z, displayWidget=self.displayWidget, thread=self.thread, hutch=self.hutch,crossWidget=self.crosshairsWidget)
+            else:
+                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget, wfs_name=wfs_name,
                                             threshold=self.imagerStats.get_threshold(), focusFOV=self.displayWidget.FOV, fraction=fraction, focus_z=self.displayWidget.focus_z, displayWidget=self.displayWidget, thread=self.thread, hutch=self.hutch)
+
+
 
             # connect processing object to plotting function
             self.processing.sig.connect(self.update_plots)
@@ -685,6 +694,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.imageWidget.update_viewbox(width, height)
             if self.displayWidget.display_choice == 'Focus':
                 self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
+            elif self.displayWidget.display_choice == 'Fourier transform':
+                FFT_width = 1/self.processing.PPM_object.dxm
+                self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
             else:
                 # this would eventually change for the FFT option
                 self.wavefrontWidget.update_viewbox(width, height)
@@ -716,6 +728,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             #self.runButton.setEnabled(True)
             # disable wavefront sensor checkbox until stop is pressed
             self.wavefrontCheckBox.setEnabled(False)
+            self.imagerStats.roiCheckBox.setEnabled(False)
+            self.imagerStats.thresholdLineEdit.setEnabled(False)
 
             # disable imager selection until Stop is pressed
             self.lineComboBox.setEnabled(False)
@@ -748,6 +762,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             # re-enable imager selection
             self.lineComboBox.setEnabled(True)
             self.imagerComboBox.setEnabled(True)
+            self.imagerStats.roiCheckBox.setEnabled(True)
+            self.imagerStats.thresholdLineEdit.setEnabled(True)
 
     @staticmethod
     def normalize_image(image):
@@ -792,7 +808,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # make sure a file name was chosen
         if not filename[0] == '':
             # normalize the image and write to file
-            im = App.normalize_image(self.data_handler.data_dict['np_profile'])
+            im = App.normalize_image(self.data_handler.data_dict['profile'])
             filename = PPM_Interface.get_filename(filename, fmt='.png')
             imageio.imwrite(filename,im)
         print(filename)
@@ -861,13 +877,13 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         else:
             self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid red;}")
 
-        x = data_dict['np_x']
-        y = data_dict['np_y']
-        image_data = data_dict['np_profile']
-        xlineout = data_dict['np_lineout_x']
-        ylineout = data_dict['np_lineout_y']
-        xprojection = data_dict['np_projection_x']
-        yprojection = data_dict['np_projection_y']
+        x = data_dict['x']
+        y = data_dict['y']
+        image_data = data_dict['profile']
+        xlineout = data_dict['lineout_x']
+        ylineout = data_dict['lineout_y']
+        xprojection = data_dict['projection_x']
+        yprojection = data_dict['projection_y']
         fit_x = data_dict['fit_x']
         fit_y = data_dict['fit_y']
 

@@ -1,4 +1,4 @@
-from .PPM_interface import PPM_Interface
+from PPM_interface import PPM_Interface
 import warnings
 from pyqtgraph.Qt import QtGui, QtWidgets
 import sys

@@ -15,10 +15,10 @@ import pyqtgraph as pg
 from pcdsdevices.areadetector.detectors import PCDSAreaDetector
 from PyQt5.uic import loadUiType
 import warnings
-from .processing_module import RunRegistration
-from .analysis_tools import YagAlign
-from .analysis_tools import XTESAlign
-from . import PPM_widgets
+from processing_module import RunRegistration
+from analysis_tools import YagAlign
+from analysis_tools import XTESAlign
+import PPM_widgets
 import os
 
 

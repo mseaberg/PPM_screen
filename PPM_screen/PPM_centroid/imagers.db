@@ -8,7 +8,8 @@
         "z": 699.558,
         "cx": 0,
         "cy": 0,
-        "FOV": 0
+        "FOV": 0,
+        "orientation": "action180"
     },
     "IM3L0": {
         "pixel": 2.7216615182062647,
@@ -45,6 +46,27 @@
         "cy": 1549,
         "FOV": 0,
         "orientation": "action180"
+    },
+    "IM5L0": {
+        "pixel": 2.875,
+        "z": 779.053,
+        "cx": 0,
+        "cy": 0,
+        "orientation": "action180"
+    },
+    "IM1L2": {
+        "pixel": 1.709,
+        "z": 787.73,
+        "cx": 0,
+        "cy": 0,
+        "orientation": "action0"
+    },
+    "IM2L2": {
+        "pixel": 2.875,
+        "z": 799.642,
+        "cx": 0,
+        "cy": 0,
+        "orientation": "action0"
     },
     "IM1K0": {
         "pixel": 6.95,
@@ -199,7 +221,6 @@
         "cx": 0,
         "cy": 0
     },
-
     "MONO_03": {
         "pixel": 1,
         "orientation": "action0",

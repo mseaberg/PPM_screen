@@ -40,20 +40,20 @@ class DataHandler:
         # self.valid_keys = ['centroid_is_valid', 'wavefront_is_valid']
 
         # keys for 1-D coordinates
-        self.coord_keys = ['np_x', 'np_y']
+        self.coord_keys = ['x', 'y']
 
         # keys for wfs 1-D coordinates
         self.wfs_coord_keys = ['x_prime', 'y_prime', 'xf']
 
         # keys for 1-D arrays updated every shot
-        self.image_array_keys = ['np_lineout_x', 'np_lineout_y', 'np_projection_x',
-                           'np_projection_y', 'fit_x', 'fit_y']
+        self.image_array_keys = ['lineout_x', 'lineout_y', 'projection_x',
+                           'projection_y', 'fit_x', 'fit_y']
 
         # keys for 1-D wfs arrays updated every shot
         self.wfs_array_keys = ['x_res', 'y_res', 'focus_horizontal', 'focus_vertical']
 
         # keys for images updated every shot
-        self.image_keys = ['np_profile']
+        self.image_keys = ['profile']
 
         # keys for wfs images updated every shot
         self.wfs_image_keys = ['focus', 'F0', 'wave']
@@ -77,6 +77,9 @@ class DataHandler:
         # set initialized to False until we get an imager
         self.initialized = False
 
+        self.pv_keys = []
+        self.pv_names = []
+
         # initialize PPM_object to None
         self.imager = None
 
@@ -92,7 +95,7 @@ class DataHandler:
         self.im_M = self.imager.M
 
         # read pv keys
-        self.pv_keys, self.pv_names = self.read_pv_names()
+        #self.pv_keys, self.pv_names = self.read_pv_names()
 
         # initialize data dictionary entries
         self.reset_data()
