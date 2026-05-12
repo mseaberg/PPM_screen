@@ -5,8 +5,8 @@ import scipy.ndimage as ndimage
 import time
 from pyqtgraph.Qt import QtCore
 #from pcdsdevices.areadetector.detectors import PCDSAreaDetector
-from PPM_screen.lcls_beamline_toolbox.xraybeamline2d import optics
-from PPM_screen.lcls_beamline_toolbox.polyprojection.legendre import LegendreFit2D
+from PPM_screen.xraybeamline2d import optics
+from PPM_screen.polyprojection.legendre import LegendreFit2D
 import sys
 import pandas as pd
 from analysis_tools import YagAlign

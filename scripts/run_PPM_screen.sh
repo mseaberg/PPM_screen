@@ -5,7 +5,7 @@
 #source /reg/g/pcds/pyps/apps/hutch-python/xpp/xppenv
 
 source /cds/home/s/seaberg/beamlineconda.sh
-#export PYTHONPATH=$PYTHONPATH:/cds/home/s/seaberg/TMO_IP2/lcls_beamline_toolbox
+export PYTHONPATH=$PYTHONPATH:/cds/home/s/seaberg/Python/PPM_screen
 
 #cd /cds/home/s/seaberg/TMO_IP2/Commissioning_Tools/PPM_centroid
 parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )

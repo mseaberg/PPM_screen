@@ -74,8 +74,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.happyCheckBox.toggled.connect(self.happy_trajectory)
 
         # adjustment for amount of time to show on plots (this should be cleaned up later)
-        self.plotRangeLineEdit.returnPressed.connect(self.set_time_range)
-        self.wfsPlotRangeLineEdit.returnPressed.connect(self.set_time_range)
+        #self.plotRangeLineEdit.returnPressed.connect(self.set_time_range)
+        #self.wfsPlotRangeLineEdit.returnPressed.connect(self.set_time_range)
 
         # connect line combo box
         self.lineComboBox.currentIndexChanged.connect(self.change_line)
@@ -87,7 +87,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
                 self.action0_flip, self.action90_flip, self.action180_flip, self.action270_flip]
 
         self.groupBox_3.setObjectName("CentroidStatsGroupBox")
-        self.groupBox_5.setObjectName("WavefrontStatsGroupBox")
+        #self.groupBox_5.setObjectName("WavefrontStatsGroupBox")
 
         # dictionary of QAction objects. Probably this could replace the above list eventually, but it works so won't
         # break it for now...
@@ -113,7 +113,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.orientation = 'action0'
 
         # initialize tab to basic tab
-        self.tabWidget.setCurrentIndex(0)
+        #self.tabWidget.setCurrentIndex(0)
 
         # connect levels to image
         self.imageWidget.connect_levels(self.levelsWidget)
@@ -125,37 +125,37 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.imagerStats.connect_image(self.imageWidget)
 
         # wavefront retrieval
-        self.wavefrontWidget.change_lineout_label('Phase (rad)')
+        #self.wavefrontWidget.change_lineout_label('Phase (rad)')
 
         # connect levels to wavefront image
-        self.wavefrontWidget.connect_levels(self.wavefrontLevelsWidget)
+        #self.wavefrontWidget.connect_levels(self.wavefrontLevelsWidget)
         # connect wavefront image to crosshairs
-        self.wavefrontWidget.connect_crosshairs(self.wavefrontCrosshairsWidget)
+        #self.wavefrontWidget.connect_crosshairs(self.wavefrontCrosshairsWidget)
 
         # add centroid plot
-        self.centroid_plot = PPM_widgets.StripChart(self.centroidCanvas, u'Beam Centroid (\u03BCm)')
+        #self.centroid_plot = PPM_widgets.StripChart(self.centroidCanvas, u'Beam Centroid (\u03BCm)')
 
         # labels and keys for plots
-        labels = ['X', 'Y', 'X smoothed', 'Y smoothed']
-        keys = ['x', 'y', 'x_smooth', 'y_smooth']
+        #labels = ['X', 'Y', 'X smoothed', 'Y smoothed']
+        #keys = ['x', 'y', 'x_smooth', 'y_smooth']
 
         # plot for centroids
-        self.centroid_plot.addSeries(keys, labels)
+        #self.centroid_plot.addSeries(keys, labels)
 
         # add FWHM plot
-        self.width_plot = PPM_widgets.StripChart(self.fwhmCanvas, u'Beam FWHM (\u03BCm)')
-        self.width_plot.addSeries(keys, labels)
+        #self.width_plot = PPM_widgets.StripChart(self.fwhmCanvas, u'Beam FWHM (\u03BCm)')
+        #self.width_plot.addSeries(keys, labels)
 
         # add focus distance plot
-        self.focus_plot = PPM_widgets.StripChart(self.focusCanvas, 'Focus position (mm)')
-        self.focus_plot.addSeries(keys, labels)
+        #self.focus_plot = PPM_widgets.StripChart(self.focusCanvas, 'Focus position (mm)')
+        #self.focus_plot.addSeries(keys, labels)
 
         # add rms error plot
-        self.rms_plot = PPM_widgets.StripChart(self.rmsErrorCanvas, 'RMS wavefront error (rad)')
-        self.rms_plot.addSeries(keys, labels)
+        #self.rms_plot = PPM_widgets.StripChart(self.rmsErrorCanvas, 'RMS wavefront error (rad)')
+        #self.rms_plot.addSeries(keys, labels)
 
         # make a list of all the plots
-        self.all_plots = [self.centroid_plot, self.width_plot, self.focus_plot, self.rms_plot]
+        #self.all_plots = [self.centroid_plot, self.width_plot, self.focus_plot, self.rms_plot]
 
         # get hutch
         try:
@@ -223,7 +223,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         print(cam_index)
 
         # set wavefront sensor attribute
-        self.wfs_name = None
+        #self.wfs_name = None
 
         # make sure this initializes properly
         #self.imagerpv_list = self.imagerpv_dict[self.line]
@@ -241,7 +241,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.imager_h5 = ImagerHdf5(prefix=self.imagerpv, name=self.imager)
 
         # disable wavefront checkbox by default since IM1L0 doesn't have a WFS
-        self.wavefrontCheckBox.setEnabled(False)
+        #self.wavefrontCheckBox.setEnabled(False)
 
         # disable calibrate button unless processing is running
         self.calibrateButton.setEnabled(False)
@@ -602,20 +602,20 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # update imager
         self.imager = self.imager_list[index]
         self.imageGroupBox.setTitle(self.imager)
-        self.wavefrontGroupBox.setTitle(self.imager)
+        #self.wavefrontGroupBox.setTitle(self.imager)
         self.curr_imager_dict = self.imager_info[self.line][self.imager]
         # check if this imager has a wavefront sensor
         #if self.imager in self.WFS_list:
-        if 'wfs' in self.curr_imager_dict.keys():
-            self.wavefrontCheckBox.setEnabled(True)
+        #if 'wfs' in self.curr_imager_dict.keys():
+        #    self.wavefrontCheckBox.setEnabled(True)
             # update wfs_name
             #self.wfs_name = self.WFS_dict[self.imager]
-            self.wfs_name = self.curr_imager_dict['wfs']
-        else:
-            self.wavefrontCheckBox.setChecked(False)
-            self.wavefrontCheckBox.setEnabled(False)
+        #    self.wfs_name = self.curr_imager_dict['wfs']
+        #else:
+        #    self.wavefrontCheckBox.setChecked(False)
+        #    self.wavefrontCheckBox.setEnabled(False)
             # no wavefront sensor associated with this imager
-            self.wfs_name = None
+        #    self.wfs_name = None
 
         #self.imagerpv = self.imagerpv_list[index]
         self.imagerpv = self.curr_imager_dict['prefix']
@@ -625,7 +625,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # hdf5 object
         self.imager_h5 = ImagerHdf5(prefix=self.imagerpv, name=self.imager)
 
-        self.wfsControls.change_wfs(self.wfs_name)
+        #self.wfsControls.change_wfs(self.wfs_name)
         # uninitialize data handler
         self.data_handler.uninitialize()
         self.load_orientation()
@@ -654,16 +654,16 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.runButton.setEnabled(False)
 
             # check if we are going to calculate the wavefront. Set wfs_name to None if not.
-            if self.wavefrontCheckBox.isChecked():
-                wfs_name = self.wfs_name
-            else:
-                wfs_name = None
+            #if self.wavefrontCheckBox.isChecked():
+            #    wfs_name = self.wfs_name
+            #else:
+            #    wfs_name = None
 
             # get Talbot fraction. This will eventually be automated based on the photon energy and WFS state.
-            try:
-                fraction = float(self.wfsControls.fractionLineEdit.text())
-            except ValueError:
-                fraction = 1
+            #try:
+            #    fraction = float(self.wfsControls.fractionLineEdit.text())
+            #except ValueError:
+            #    fraction = 1
             
             # initialize a new thread
             self.thread = QtCore.QThread()
@@ -671,11 +671,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             # initialize processing object. This really needs a dictionary as input...
             
             if self.imagerStats.roiCheckBox.isChecked():
-                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget, wfs_name=wfs_name,
-                                            threshold=self.imagerStats.get_threshold(), focusFOV=self.displayWidget.FOV, fraction=fraction, focus_z=self.displayWidget.focus_z, displayWidget=self.displayWidget, thread=self.thread, hutch=self.hutch,crossWidget=self.crosshairsWidget)
+                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget,
+                                            threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch,crossWidget=self.crosshairsWidget)
             else:
-                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget, wfs_name=wfs_name,
-                                            threshold=self.imagerStats.get_threshold(), focusFOV=self.displayWidget.FOV, fraction=fraction, focus_z=self.displayWidget.focus_z, displayWidget=self.displayWidget, thread=self.thread, hutch=self.hutch)
+                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget,
+                                            threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch)
 
 
 
@@ -692,18 +692,18 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
             # update viewboxes based on FOV
             self.imageWidget.update_viewbox(width, height)
-            if self.displayWidget.display_choice == 'Focus':
-                self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
-            elif self.displayWidget.display_choice == 'Fourier transform':
-                FFT_width = 1/self.processing.PPM_object.dxm
-                self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
-            else:
+            #if self.displayWidget.display_choice == 'Focus':
+            #    self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
+            #elif self.displayWidget.display_choice == 'Fourier transform':
+            #    FFT_width = 1/self.processing.PPM_object.dxm
+            #    self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
+            #else:
                 # this would eventually change for the FFT option
-                self.wavefrontWidget.update_viewbox(width, height)
+            #    self.wavefrontWidget.update_viewbox(width, height)
 
             # update crosshair sizes
             self.crosshairsWidget.update_crosshair_width()
-            self.wavefrontCrosshairsWidget.update_crosshair_width()
+            #self.wavefrontCrosshairsWidget.update_crosshair_width()
 
             # update width for circle displayed on beam
             self.imagerStats.update_width()
@@ -727,7 +727,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.runButton.setText('Stop')
             #self.runButton.setEnabled(True)
             # disable wavefront sensor checkbox until stop is pressed
-            self.wavefrontCheckBox.setEnabled(False)
+            #self.wavefrontCheckBox.setEnabled(False)
             self.imagerStats.roiCheckBox.setEnabled(False)
             self.imagerStats.thresholdLineEdit.setEnabled(False)
 
@@ -754,9 +754,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.alignmentButton.setEnabled(False)
             # re-enable wavefront sensor checkbox if imager is has a wavefront sensor
             #if self.imager in self.WFS_list:
-            if 'wfs' in self.curr_imager_dict.keys():
+            #if 'wfs' in self.curr_imager_dict.keys():
 
-                self.wavefrontCheckBox.setEnabled(True)
+            #    self.wavefrontCheckBox.setEnabled(True)
 
             #self.runButton.setEnabled(True)
             # re-enable imager selection
@@ -872,10 +872,10 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.groupBox_3.setStyleSheet("QGroupBox#CentroidStatsGroupBox { border: 2px solid red;}")
 
         # check if the most recent measurement was valid
-        if wavefront_validity[-1]:
-            self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid green;}")
-        else:
-            self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid red;}")
+        #if wavefront_validity[-1]:
+        #    self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid green;}")
+        #else:
+        #    self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid red;}")
 
         x = data_dict['x']
         y = data_dict['y']
@@ -900,30 +900,30 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
                 xlineout_data=xlineout, ylineout_data=ylineout)
 
         # update wavefront tab
-        if self.wavefrontCheckBox.isChecked():
+        #if self.wavefrontCheckBox.isChecked():
 
             # get focus coordinates
-            xf = data_dict['xf']
+        #    xf = data_dict['xf']
 
             # check what is supposed to be displayed. Would be nice to also clean this up
-            if self.displayWidget.display_choice == 'Focus':
-                xline = data_dict['focus_horizontal']
-                yline = data_dict['focus_vertical']
-                self.wavefrontWidget.update_plots(data_dict['focus'], xf, xf, xline, yline, xline, yline)
-            elif self.displayWidget.display_choice == 'Fourier transform':
-                self.wavefrontWidget.update_plots(data_dict['F0'], x, y, xprojection, yprojection, fit_x, fit_y)
-            elif self.displayWidget.display_choice == 'Phase':
-                self.wavefrontWidget.update_plots(data_dict['wave'], x_prime, y_prime, x_res, y_res, x_res, y_res)
+        #    if self.displayWidget.display_choice == 'Focus':
+        #        xline = data_dict['focus_horizontal']
+        #        yline = data_dict['focus_vertical']
+        #        self.wavefrontWidget.update_plots(data_dict['focus'], xf, xf, xline, yline, xline, yline)
+        #    elif self.displayWidget.display_choice == 'Fourier transform':
+        #        self.wavefrontWidget.update_plots(data_dict['F0'], x, y, xprojection, yprojection, fit_x, fit_y)
+        #    elif self.displayWidget.display_choice == 'Phase':
+        #        self.wavefrontWidget.update_plots(data_dict['wave'], x_prime, y_prime, x_res, y_res, x_res, y_res)
 
             # update wavefront tab stripchart plots
-            self.focus_plot.update_plots(data_dict['timestamps'], x=data_dict['z_x'], y=data_dict['z_y'], x_smooth=data_dict['z_x_smooth'], y_smooth=data_dict['z_y_smooth'])
-            self.rms_plot.update_plots(data_dict['timestamps'], x=data_dict['coma_x'], y=data_dict['coma_y'], x_smooth=data_dict['rms_x_smooth'], y_smooth=data_dict['rms_y_smooth'])
+        #    self.focus_plot.update_plots(data_dict['timestamps'], x=data_dict['z_x'], y=data_dict['z_y'], x_smooth=data_dict['z_x_smooth'], y_smooth=data_dict['z_y_smooth'])
+        #    self.rms_plot.update_plots(data_dict['timestamps'], x=data_dict['coma_x'], y=data_dict['coma_y'], x_smooth=data_dict['rms_x_smooth'], y_smooth=data_dict['rms_y_smooth'])
 
-            self.wfsStats.update_stats(data_dict)
+        #    self.wfsStats.update_stats(data_dict)
 
         # update centroid plots
-        self.centroid_plot.update_plots(data_dict['timestamps'], x=data_dict['cx'], y=data_dict['cy'], x_smooth=data_dict['cx_smooth'], y_smooth=data_dict['cy_smooth'])
-        self.width_plot.update_plots(data_dict['timestamps'], x=data_dict['wx'], y=data_dict['wy'], x_smooth=data_dict['wx_smooth'], y_smooth=data_dict['wy_smooth'])
+        #self.centroid_plot.update_plots(data_dict['timestamps'], x=data_dict['cx'], y=data_dict['cy'], x_smooth=data_dict['cx_smooth'], y_smooth=data_dict['cy_smooth'])
+        #self.width_plot.update_plots(data_dict['timestamps'], x=data_dict['wx'], y=data_dict['wy'], x_smooth=data_dict['wx_smooth'], y_smooth=data_dict['wy_smooth'])
 
         self.label.setText(data_dict['tx'])
 

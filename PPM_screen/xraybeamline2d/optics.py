@@ -3114,11 +3114,11 @@ class PPM_Device(PPM):
         #     self.cam_name = sys.argv[1]
         #     self.epics_name = sys.argv[1] + 'IMAGE2:'
 
-        if 'XTES' in self.imager_prefix or 'PPM' in self.imager_prefix:
-            PV(self.epics_name + 'ROI:Scale').put(1)
-            PV(self.epics_name + 'ROI:BinX').put(1)
-            PV(self.epics_name + 'ROI:BinY').put(1)
-            PV(self.cam_name + 'DataType').put('UInt16')
+        #if 'XTES' in self.imager_prefix or 'PPM' in self.imager_prefix:
+        #    PV(self.epics_name + 'ROI:Scale').put(1)
+        #    PV(self.epics_name + 'ROI:BinX').put(1)
+        #    PV(self.epics_name + 'ROI:BinY').put(1)
+        #    PV(self.cam_name + 'DataType').put('UInt16')
 
         self.image_pv = PV(self.epics_name + 'ArrayData')
 
