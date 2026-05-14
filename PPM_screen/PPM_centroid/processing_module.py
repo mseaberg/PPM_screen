@@ -22,12 +22,13 @@ class RunProcessing(QtCore.QObject):
     sig_initialized = QtCore.pyqtSignal()
     sig_finished = QtCore.pyqtSignal()
 
-    def __init__(self, imager_prefix, data_handler, averageWidget, wfs_name=None, threshold=0.1, focusFOV=10, fraction=1, focus_z=0, displayWidget=None, thread=None, hutch=None, crossWidget=None):
+    def __init__(self, imager_dict, data_handler, averageWidget, wfs_name=None, threshold=0.1, focusFOV=10, fraction=1, focus_z=0, displayWidget=None, thread=None, hutch=None, crossWidget=None):
         super(RunProcessing, self).__init__()
         #QtCore.QThread.__init__(self)
 
         self.thread = thread
         self.hutch = hutch
+        imager_prefix = imager_dict['prefix']
 
         if crossWidget is not None:
             try:
@@ -64,7 +65,7 @@ class RunProcessing(QtCore.QObject):
             self.WFS_object = None
 
         # PPM object for image acquisition and processing
-        self.PPM_object = optics.PPM_Device(imager_prefix, average=averageWidget, threshold=self.threshold,roi=roi)
+        self.PPM_object = optics.PPM_Device(imager_dict, average=averageWidget, threshold=self.threshold,roi=roi)
 
         # frame rate initialization
         self.fps = 0.
@@ -115,7 +116,7 @@ class RunProcessing(QtCore.QObject):
         if self.hutch=='lfe':
             self.timer.setInterval(2000)
         else:
-            self.timer.setInterval(500)
+            self.timer.setInterval(200)
         self.timer.timeout.connect(self._update)
 
         #self._update()
@@ -150,18 +151,15 @@ class RunProcessing(QtCore.QObject):
 
             # get latest image
             self.PPM_object.get_image(angle=angle)
-
+            
             # wavefront sensing
             if self.WFS_object is not None:
                 wfs_data, wfs_param = self.PPM_object.retrieve_wavefront(self.WFS_object, focusFOV=focusFOV, focus_z=focus_z)
             else:
                 wfs_data = None
-
             self.data_handler.update_data(wfs_data=wfs_data)
-
             # send data
             self.sig.emit()
-
             # keep running unless the stop button is pressed
             if self.running:
                 #QtCore.QTimer.singleShot(500, self._update)

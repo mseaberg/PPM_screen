@@ -15,6 +15,10 @@
     },
     "IM5L0": {
       "prefix": "IM5L0:PPM:"
+    },
+    "xrt_yag3": {
+        "prefix": "XRT:DG3:GIGE:01:",
+        "motor": "HFX:DG3:PIM"
     }
   },
   "L1": {

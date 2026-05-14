@@ -4,7 +4,8 @@
 #source /reg/g/pcds/pyps/apps/hutch-python/tmo/tmoenv
 #source /reg/g/pcds/pyps/apps/hutch-python/xpp/xppenv
 
-source /cds/home/s/seaberg/beamlineconda.sh
+#source /cds/home/s/seaberg/beamlineconda.sh
+source /reg/g/pcds/pyps/apps/hutch-python/xcs/xcsenv
 export PYTHONPATH=$PYTHONPATH:/cds/home/s/seaberg/Python/PPM_screen
 
 #cd /cds/home/s/seaberg/TMO_IP2/Commissioning_Tools/PPM_centroid

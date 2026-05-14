@@ -236,5 +236,8 @@
         "z": 0.0,
         "cx": 120,
         "cy": -200
+    },
+    "xrt_yag3": {
+        "orientation": "action90"
     }
 }

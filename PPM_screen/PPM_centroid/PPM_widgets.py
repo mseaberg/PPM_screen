@@ -427,9 +427,12 @@ class ImagerStats(QImagerStats, Ui_ImagerStats):
             x2 = PV(imager_prefix + 'CAM:01:X_RTCL_CTR').get()
             y2 = PV(imager_prefix + 'CAM:01:Y_RTCL_CTR').get()
 
-        else:
+        elif 'IM' in imager_prefix:
             x2 = PV(imager_prefix + 'CAM:X_RTCL_CTR').get()
             y2 = PV(imager_prefix + 'CAM:Y_RTCL_CTR').get()
+        else:
+            x2 = PV(imager_prefix + 'X_RTCL_CTR').get()
+            y2 = PV(imager_prefix + 'Y_RTCL_CTR').get()
 
         if x2 is not None:
             xRef = x2

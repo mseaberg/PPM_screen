@@ -671,10 +671,10 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             # initialize processing object. This really needs a dictionary as input...
             
             if self.imagerStats.roiCheckBox.isChecked():
-                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget,
+                self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
                                             threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch,crossWidget=self.crosshairsWidget)
             else:
-                self.processing = RunProcessing(self.imagerpv, self.data_handler, self.averageWidget,
+                self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
                                             threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch)
 
 

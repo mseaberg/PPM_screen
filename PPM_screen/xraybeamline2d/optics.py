@@ -2416,8 +2416,9 @@ class PPM:
         fwhm_y = sy * 2.355 / 1e6
 
         # check validity
-        validity = ((self.amp_x > 50) and (self.amp_y > 0) and fit_validity and
-                    (fwhm_x < np.max(2*self.x)) and (fwhm_y < np.max(2*self.y)))
+        validity = ((self.amp_x > 2) and (self.amp_y > 2) and fit_validity and
+                    (fwhm_x < np.max(self.x)/2) and (fwhm_y < np.max(self.y)/2)
+                    and fwhm_x > self.dx*5 and fwhm_y > self.dx*5)
 
         self.centroid_is_valid = validity
 
@@ -2926,10 +2927,11 @@ class PPM_Device(PPM):
     """
     Child class of PPM that is used for a physical PPM, rather than simulated.
     """
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
+    def __init__(self, imager_dict, **kwargs):
+        self.imager_prefix = imager_dict['prefix']
+        super().__init__(self.imager_prefix, **kwargs)
 
-        self.imager_prefix = name
+        #self.imager_prefix = name
         self.threshold = 0.0001
         self.roi = None 
 
@@ -2942,23 +2944,28 @@ class PPM_Device(PPM):
                 setattr(self, key, value)
 
         # get Y motor state
-        self.state = EpicsSignalRO(self.imager_prefix+'MMS:STATE:GET_RBV', auto_monitor=True)
+        if 'IM' in self.imager_prefix:
+            self.state = EpicsSignalRO(self.imager_prefix+'MMS:STATE:GET_RBV', auto_monitor=True)
+        else:
+            self.state = EpicsSignalRO(imager_dict['motor']+'.VAL', auto_monitor=True)
         # define possible states depending on imager type
         if 'XTES' in self.imager_prefix:
             self.states_list = ['Unknown', 'OUT', 'YAG', 'DIAMOND', 'RETICLE']
         elif 'PPM' in self.imager_prefix:
             self.states_list = ['Unknown', 'OUT', 'POWERMETER', 'YAG1', 'YAG2']
         else:
-            self.states_list = []
+            self.states_list = ['Unknown','DIODE','YAG','OUT']
 
         if 'L2' in self.imager_prefix:
             self.cam_name = self.imager_prefix + 'CAM:01:'
-        else:
+        elif 'IM' in self.imager_prefix:
             self.cam_name = self.imager_prefix + 'CAM:'
+        else:
+            self.cam_name = self.imager_prefix
         
         if 'MONO' in self.imager_prefix:
             self.cam_name = self.imager_prefix
-        self.epics_name = self.cam_name + 'IMAGE3:'
+        self.epics_name = self.cam_name + 'IMAGE1:'
         # get acquisition info (this is in seconds)
         self.acquisition_period = PV(self.epics_name[:-7] + 'AcquirePeriod_RBV').get()
 
@@ -2985,9 +2992,12 @@ class PPM_Device(PPM):
             self.epics_name = self.imager_prefix + 'IMAGE1:'
             self.acquisition_period = PV(self.imager_prefix + 'AcquirePeriod_RBV').get()
        
-        
-        self.x_bm_ctr = PV(self.cam_name + 'X_BM_CTR')
-        self.y_bm_ctr = PV(self.cam_name + 'Y_BM_CTR')
+        if 'IM' in self.cam_name: 
+            self.x_bm_ctr = PV(self.cam_name + 'X_BM_CTR')
+            self.y_bm_ctr = PV(self.cam_name + 'Y_BM_CTR')
+        else:
+            self.x_bm_ctr = PV(self.imager_prefix + 'X_BM_CTR')
+            self.y_bm_ctr = PV(self.imager_prefix + 'Y_BM_CTR')
 
         self.orientation = 'action0'
 
@@ -3550,11 +3560,11 @@ class PPM_Device(PPM):
             img = img/numImages
 
             time_stamp = image_data['timestamp']
+
         # time_stamp = image_data.time_stamp
         # img = np.array(image_data.shaped_image,dtype='float')
         # img = np.array(self.gige.image2.image,dtype='float')
         #img = Util.threshold_array(img, self.threshold)
-
         if self.orientation == 'action0':
             self.profile = img
             self.x = self.x0
@@ -3622,14 +3632,13 @@ class PPM_Device(PPM):
 
         # get beam statistics
         self.cx, self.cy, self.wx, self.wy, wx2, wy2 = self.beam_analysis(self.projection_x, self.projection_y)
-
         # add imager state to validity
         if 'MONO' in self.imager_prefix or 'SL' in self.imager_prefix:
             imager_state = 'YAG'
         elif 'IM' in self.imager_prefix:
             imager_state = self.states_list[self.state.value]
         else:
-            imager_state = 'NONE'
+            imager_state = self.states_list[self.state.value]
         imager_in = 'YAG' in imager_state or 'DIAMOND' in imager_state
 
         self.centroid_is_valid = self.centroid_is_valid and imager_in
@@ -3657,7 +3666,6 @@ class PPM_Device(PPM):
             self.lineout_x = self.projection_x
             self.lineout_y = self.projection_y
 
-        #print('got lineouts')
 
         # gaussian fits
         try:
@@ -3670,7 +3678,6 @@ class PPM_Device(PPM):
                 -(self.y - self.cy) ** 2 / 2 / (self.wy / 2.355) ** 2)
         except RuntimeWarning:
             fit_y = np.zeros_like(self.lineout_y)
-
 
 
         self.fit_x = fit_x
@@ -4360,6 +4367,7 @@ class EXS_Device(PPM):
     def get_image(self, angle=0, demo=False):
         try:
             # do averaging
+            print('getting image')
             if hasattr(self, 'average'):
                 numImages = getattr(self, 'average').get_numImages()
             else:
@@ -4387,7 +4395,7 @@ class EXS_Device(PPM):
             # img = np.array(image_data.shaped_image,dtype='float')
             # img = np.array(self.gige.image2.image,dtype='float')
             # img = Util.threshold_array(img, self.threshold)
-
+            print('got image')
             if self.orientation == 'action0':
                 self.profile = img
             elif self.orientation == 'action90':
@@ -4413,10 +4421,12 @@ class EXS_Device(PPM):
             self.intensity = np.mean(temp_profile)
             self.projection_x = np.mean(temp_profile, axis=0)
             self.projection_y = np.mean(temp_profile, axis=1)
-
+            
+            print('starting processing')
             # get beam statistics
             self.cx, self.cy, self.wx, self.wy, wx2, wy2 = self.beam_analysis(self.projection_x, self.projection_y)
-
+            
+            print('image processed')
             # add imager state to validity
             # imager_state = self.states_list[self.state.value]
             # imager_in = 'YAG' in imager_state or 'DIAMOND' in imager_state
