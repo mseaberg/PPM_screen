@@ -19,7 +19,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from time import sleep
-from .pitch import TalbotLineout, TalbotImage
 import scipy.interpolate as interpolation
 import scipy.ndimage as ndimage
 import scipy.optimize as optimize
