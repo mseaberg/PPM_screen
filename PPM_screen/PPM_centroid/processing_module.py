@@ -6,7 +6,6 @@ import time
 from pyqtgraph.Qt import QtCore
 #from pcdsdevices.areadetector.detectors import PCDSAreaDetector
 from PPM_screen.xraybeamline2d import optics
-from PPM_screen.polyprojection.legendre import LegendreFit2D
 import sys
 import pandas as pd
 from analysis_tools import YagAlign
@@ -88,27 +87,7 @@ class RunProcessing(QtCore.QObject):
         else:
             self.data_handler.initialize(self.PPM_object)
 
-        # downsampling is hard-coded here for now
-        downsample = 3
-
-        # calculate downsampled array sizes
-        Nd = int(self.PPM_object.N / (2 ** downsample))
-        Md = int(self.PPM_object.M / (2 ** downsample))
-
-        # Legendre order is hard-coded here for now
-        order = 16
-        ###### set up Legendre basis
-        if self.wfs_name is not None:
-            # check if fit object file exists
-            basis_file = self.hutch_path+'/wfs_files/legendre_{}_{}_{}.pickle'.format(Nd,Md,order)
-            if os.path.isfile(basis_file):
-                with open(basis_file, 'rb') as f:
-                    fit_object = pickle.load(f)
-            else:
-                fit_object = LegendreFit2D(Nd, Md, order)
-                with open(basis_file, 'wb') as f:
-                    pickle.dump(fit_object, f)
-            self.PPM_object.add_fit_object(fit_object)
+        
         self.running = True
         self.sig_initialized.emit()
 
