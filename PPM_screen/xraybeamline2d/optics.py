@@ -28,7 +28,6 @@ from skimage.restoration import unwrap_phase
 from datetime import datetime
 import os
 import pickle
-from ..polyprojection.legendre import LegendreFit2D
 from .util import Util
 try:
     from epics import PV
