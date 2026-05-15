@@ -18,7 +18,7 @@ from processing_module import RunProcessing
 from Image_registration_epics import App
 import PPM_widgets
 from imager_data import DataHandler
-from motion_module import Calibration, Alignment
+from motion_module import Alignment
 from io_module import ImagerHdf5, ElogHandler
 from subprocess import check_output
 import os
@@ -53,8 +53,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # button to start calculations
         self.runButton.clicked.connect(self.change_state)
-        # button to start calibration
-        self.calibrateButton.clicked.connect(self.calibrate)
         self.alignmentButton.clicked.connect(self.align_focus)
         self.actionReset_Plots.triggered.connect(self.reset_plots)
         self.actionSave_Data.triggered.connect(self.save_data)
@@ -256,7 +254,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # initialize registration object
         self.processing = None
-        self.calib = None
         self.alignment_message = None
         self.align = None
         self.alignment_thread = None
@@ -265,24 +262,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # attribute describing if trajectory is set
         self.trajectory_is_set = False
-
-    def calibrate(self):
-        calib_plot = PPM_widgets.NewPlot(self, self.data_handler.plot_keys())
-        calib_plot.xaxis_comboBox.setCurrentText('timestamps')
-        calib_plot.yaxis_comboBox.setCurrentText('MR2K4:KBO:MMS:PITCH.RBV')
-        calib_plot.min_lineEdit.setText('-100')
-        calib_plot.update_min()
-        calib_plot.update_axes()
-        calib_plot.show()
-        self.plots.append(calib_plot)
-
-        self.calibrateButton.setEnabled(False)
-
-        self.calib = Calibration(self.data_handler)
-        #self.calib.finished.connect(lambda event=0: calib_plot.closeEvent(event))
-        #self.calib.finished.connect(calib_plot.close)
-        self.calib.finished.connect(self.enable_calibrate)
-        self.calib.start()
 
     def enable_calibrate(self):
         self.calibrateButton.setEnabled(True)
