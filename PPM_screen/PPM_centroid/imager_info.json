@@ -11,7 +11,8 @@
       "prefix": "IM3L0:PPM:"
     },
     "IM4L0": {
-      "prefix": "IM4L0:XTES:"
+      "prefix": "IM4L0:XTES:",
+      "mirror": "MR2L0:HOMS:"
     },
     "IM5L0": {
       "prefix": "IM5L0:PPM:",
