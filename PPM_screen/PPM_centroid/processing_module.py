@@ -91,7 +91,7 @@ class RunProcessing(QtCore.QObject):
         if self.hutch=='lfe':
             self.timer.setInterval(2000)
         else:
-            self.timer.setInterval(200)
+            self.timer.setInterval(500)
         self.timer.timeout.connect(self._update)
 
         #self._update()
