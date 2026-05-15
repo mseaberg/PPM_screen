@@ -5,15 +5,11 @@ import scipy.ndimage as ndimage
 import time
 from pyqtgraph.Qt import QtCore
 #from pcdsdevices.areadetector.detectors import PCDSAreaDetector
-from PPM_screen.xraybeamline2d import optics
-import sys
+from PPM_screen.PPM_centroid import optics
 import pandas as pd
 from analysis_tools import YagAlign
 from datetime import datetime
 from ophyd import EpicsSignalRO as SignalRO
-from imager_data import DataHandler
-import os.path
-import pickle
 
 
 class RunProcessing(QtCore.QObject):
@@ -64,7 +60,7 @@ class RunProcessing(QtCore.QObject):
             self.WFS_object = None
 
         # PPM object for image acquisition and processing
-        self.PPM_object = optics.PPM_Device(imager_dict, average=averageWidget, threshold=self.threshold,roi=roi)
+        self.PPM_object = optics.PPM_Device(imager_dict, average=averageWidget, threshold=self.threshold, roi=roi)
 
         # frame rate initialization
         self.fps = 0.
@@ -87,7 +83,7 @@ class RunProcessing(QtCore.QObject):
         else:
             self.data_handler.initialize(self.PPM_object)
 
-        
+
         self.running = True
         self.sig_initialized.emit()
 
