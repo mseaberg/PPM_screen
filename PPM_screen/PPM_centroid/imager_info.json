@@ -14,11 +14,23 @@
       "prefix": "IM4L0:XTES:"
     },
     "IM5L0": {
-      "prefix": "IM5L0:PPM:"
+      "prefix": "IM5L0:PPM:",
+      "mirror": "MR2L0:HOMS:"
+    },
+    "xrt_yag1": {
+      "prefix": "XRT:DG1:GIGE:01:",
+      "motor": "HXX:UM6:PIM",
+      "mirror": "MR2L0:HOMS:"
+    },
+    "xrt_yag2": {
+      "prefix": "XRT:DG2:GIGE:01:",
+      "motor": "HFX:DG2:PIM",
+      "mirror": "MR2L0:HOMS:"
     },
     "xrt_yag3": {
-        "prefix": "XRT:DG3:GIGE:01:",
-        "motor": "HFX:DG3:PIM"
+      "prefix": "XRT:DG3:GIGE:01:",
+      "motor": "HFX:DG3:PIM",
+      "mirror": "MR2L0:HOMS:"
     }
   },
   "L1": {
@@ -34,6 +46,29 @@
           "prefix": "IM2L2:PPM:",
           "wfs": "PF2L2"
       }
+  },
+  "L3": {
+    "xcs_yag3": {
+      "prefix": "XRT:DG3:GIGE:02:",
+      "motor": "XCS:DG3:PIM",
+      "mirror": "MR1L3:HOMS:"
+    },
+    "xcs_yag4": {
+      "prefix": "XCS:GIGE:16:",
+      "motor": "XCS:SB1:PIM",
+      "mirror": "MR1L3:HOMS:"
+    }
+  },
+  "L4": {
+    "mec_yag0": {
+      "prefix": "HXX:HXM:CVV:01:",
+      "motor": "HXX:HXM:PIM"
+    },
+    "mec_yag1": {
+      "prefix": "MEC:GIGE:14:",
+      "motor": "MEC:HXM:PIM",
+      "mirror": "MR1L4:HOMS:"
+    }
   },
   "K0": {
     "IM1K0": {
