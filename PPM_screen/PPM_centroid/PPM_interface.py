@@ -286,28 +286,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def align_focus(self):
 
-        # get current z position goals
-        try:
-            z_x_target = float(self.xFocusLineEdit.text())
-        except ValueError:
-            z_x_target = 0.0
-            self.xFocusLineEdit.setText('0.0')
-        try:
-            z_y_target = float(self.yFocusLineEdit.text())
-        except ValueError:
-            z_y_target = 0.0
-            self.yFocusLineEdit.setText('0.0')
-
         # disable alignment button
         self.alignmentButton.setEnabled(False)
 
-        goals = {
-            'x': np.array([z_x_target, 0]),
-            'y': np.array([z_y_target, 0])
-        }
-
         self.alignment_message = QtWidgets.QMessageBox()
-        self.align = Alignment(self.data_handler, self.curr_imager_dict, goals)
+        self.align = Alignment(self.curr_imager_dict)
         self.align.sig_finished.connect(self.alignment_finished)
 
         # initialize a new thread
@@ -321,7 +304,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # make a dialog box to allow killing the thread
         self.alignment_message.setIcon(QtWidgets.QMessageBox.Information)
-        self.alignment_message.setText("Attempting focus alignment")
+        self.alignment_message.setText("Attempting alignment")
         self.alignment_message.setWindowTitle("Alignment")
         self.alignment_message.setStandardButtons(QtWidgets.QMessageBox.Cancel)
 
