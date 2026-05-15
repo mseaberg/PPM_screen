@@ -375,13 +375,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
     def enable_align(self):
         #if self.wfs_name=='PF1K4':
         try:
-            if 'hutch' in self.curr_imager_dict.keys():
-                allowed_hutch = self.hutch.lower()==self.curr_imager_dict['hutch']
+            if 'mirror' in self.curr_imager_dict.keys():
+                has_mirror = True
             else:
-                allowed_hutch = False
-            wfs_exists = self.wfs_name is not None
-            wfs_calc = self.wavefrontCheckBox.isChecked()
-            if allowed_hutch and wfs_exists and wfs_calc:
+                has_mirror = False
+            if has_mirror:
                 self.alignmentButton.setEnabled(True)
         except:
             print('image_info.json file is incomplete')
