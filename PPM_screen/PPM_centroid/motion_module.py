@@ -36,9 +36,9 @@ class Alignment(QtCore.QObject):
             time.sleep(0.1)
         out = self.avg_centroid.get()
         # make sure we get a good reading before continuing
-        if np.isnan(out):
-            print('need to get a better signal')
-            self.get_centroid()
+        # if np.isnan(out):
+        #     print('need to get a better signal')
+        #     self.get_centroid()
         return out
 
     def run(self):
