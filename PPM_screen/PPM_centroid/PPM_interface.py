@@ -400,7 +400,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         """
         # get current file contents
         try:
-            with open('imagers.db') as json_file:
+            with open(local_path+'/imagers.db') as json_file:
                 data = json.load(json_file)
 
         except json.decoder.JSONDecodeError:
