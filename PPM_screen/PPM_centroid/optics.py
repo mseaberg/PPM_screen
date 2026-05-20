@@ -2414,7 +2414,7 @@ class PPM:
         fwhm_y = sy * 2.355 / 1e6
 
         # check validity
-        validity = ((self.amp_x > 2) and (self.amp_y > 2) and fit_validity and
+        validity = ((self.amp_x > 0) and (self.amp_y > 0) and fit_validity and
                     (fwhm_x < np.max(self.x)/2) and (fwhm_y < np.max(self.y)/2)
                     and fwhm_x > self.dx*5 and fwhm_y > self.dx*5)
 

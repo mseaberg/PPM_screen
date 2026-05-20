@@ -69,9 +69,6 @@ class Alignment(QtCore.QObject):
             self._run()
 
     def _run(self):
-        # need to get some updates from the RunProcessing object to see where we are currently. We also need to
-
-        # need a while loop here to collect some data
 
         if self.running:
 
@@ -83,7 +80,7 @@ class Alignment(QtCore.QObject):
             # move mirror slightly
             print('moving mirror')
             print(self.mirror.pitch.get())
-            #self.mirror.pitch.mvr(0.2, wait=True)
+            self.mirror.pitch.mvr(0.2, wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target.value
             self.calib = (self.new_error - self.error) / 0.2
@@ -107,9 +104,15 @@ class Alignment(QtCore.QObject):
     def _update(self):
         if self.running:
 
-            adj = -self.new_error / self.calib
+            try:
+                adj = -self.new_error / self.calib
+            except ZeroDivisionError:
+                print('problem with calibration')
+                self.sig_finished.emit()
+                return
+
             print(adj)
-            # self.mirror.pitch.mvr(adj, wait=True)
+            self.mirror.pitch.mvr(adj, wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target.value
             print(self.new_error)
@@ -136,7 +139,7 @@ class Alignment(QtCore.QObject):
             #self.undulator.move(position=20, wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target.value
-            calib = (self.new_error - self.error) / 0.2
+            self.calib = (self.new_error - self.error) / 0.2
             print(self.new_error)
             self._und_update()
             # #while np.abs(new_error) > 50:
@@ -156,8 +159,14 @@ class Alignment(QtCore.QObject):
 
     def _und_update(self):
         if self.running:
+            try:
+                adj = -self.new_error / self.calib
+            except ZeroDivisionError:
+                print('problem with calibration')
+                self.sig_finished.emit()
+                return
 
-            adj = -self.new_error / self.calib
+
             print(adj)
             # self.undulator.move(adj, wait=True)
             cen_x, cen_y = self.get_centroid()

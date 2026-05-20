@@ -5,6 +5,7 @@ from ophyd.signal import ReadTimeoutError
 from copy import copy
 import os
 import h5py
+import time
 
 class DataHandler:
     """
@@ -202,6 +203,7 @@ class DataHandler:
         :return:
         """
 
+        time1 = time.time() 
         # update timestamps
         self.update_1d_data(self.timestamp_key, self.imager.time_stamp)
 
@@ -260,6 +262,8 @@ class DataHandler:
             fps = 1.0
         tx = 'Mean Frame Rate:  {fps:.3f} FPS'.format(fps=fps)
         self.data_dict['tx'] = tx
+        time2 = time.time()
+        print(time2-time1)
 
     def update_wfs_data(self, wfs_data):
         for key in wfs_data.keys():

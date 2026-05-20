@@ -8,7 +8,8 @@
       "wfs": "PF1L0"
     },
     "IM3L0": {
-      "prefix": "IM3L0:PPM:"
+      "prefix": "IM3L0:PPM:",
+      "mirror": "und"
     },
     "IM4L0": {
       "prefix": "IM4L0:XTES:",

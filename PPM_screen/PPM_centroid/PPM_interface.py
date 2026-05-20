@@ -12,7 +12,7 @@ import json
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 from PyQt5.uic import loadUiType
-from PyQt5.QtCore import Qt
+#from PyQt5.QtCore import Qt
 import warnings
 from processing_module import RunProcessing
 from Image_registration_epics import App
@@ -638,10 +638,10 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             
             if self.imagerStats.roiCheckBox.isChecked():
                 self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-                                            threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch,crossWidget=self.crosshairsWidget)
+                                            threshold=self.imagerStats.get_threshold(), hutch=self.hutch,crossWidget=self.crosshairsWidget)
             else:
                 self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-                                            threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch)
+                                            threshold=self.imagerStats.get_threshold(), hutch=self.hutch)
 
 
 
@@ -824,7 +824,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         data_dict: dict
             This is where all the data to display is stored
         """
-
+       
+        time1 = time.time()
         data_dict = self.data_handler.data_dict
 
         # get validity
@@ -898,3 +899,5 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         for plot in self.plots:
             plot.update_plot(data_dict, self.data_handler.plot_keys())
+        time2 = time.time()
+        print('plot update: {}'.format(time2-time1))

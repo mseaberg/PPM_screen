@@ -3,7 +3,9 @@ import numpy as np
 import scipy.ndimage.interpolation as interpolate
 import scipy.ndimage as ndimage
 import time
-from pyqtgraph.Qt import QtCore
+#from pyqtgraph.Qt import QtCore
+from PyQt5 import QtCore
+
 #from pcdsdevices.areadetector.detectors import PCDSAreaDetector
 from PPM_screen.PPM_centroid import optics
 import pandas as pd
@@ -21,7 +23,7 @@ class RunProcessing(QtCore.QObject):
         super(RunProcessing, self).__init__()
         #QtCore.QThread.__init__(self)
 
-        self.thread = thread
+        #self.thread = thread
         self.hutch = hutch
         imager_prefix = imager_dict['prefix']
 
@@ -112,7 +114,7 @@ class RunProcessing(QtCore.QObject):
         return width, height
 
     def _update(self):
-
+        time1 = time.time()
         if self.running:
 
             if self.displayWidget is not None:
@@ -146,6 +148,8 @@ class RunProcessing(QtCore.QObject):
         else:
             self.sig_finished.emit()
             self.timer.stop()
+        time2 = time.time()
+        print('calculation: {}'.format(time2-time1))
 
     def stop(self):
         self.running = False
