@@ -20,4 +20,4 @@ else
     IMAGER="IM1L0"
 fi
 
-python run_interface.py -c $IMAGER &
+python -m cProfile -o results.prof run_interface.py -c $IMAGER &
