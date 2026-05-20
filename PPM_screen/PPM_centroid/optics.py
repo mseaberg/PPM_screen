@@ -2945,7 +2945,7 @@ class PPM_Device(PPM):
         if 'IM' in self.imager_prefix:
             self.state = EpicsSignalRO(self.imager_prefix+'MMS:STATE:GET_RBV', auto_monitor=True)
         else:
-            self.state = EpicsSignalRO(imager_dict['motor']+'.VAL', auto_monitor=True)
+            self.state = EpicsSignalRO(imager_dict['motor']+'PIM.VAL', auto_monitor=True)
         # define possible states depending on imager type
         if 'XTES' in self.imager_prefix:
             self.states_list = ['Unknown', 'OUT', 'YAG', 'DIAMOND', 'RETICLE']

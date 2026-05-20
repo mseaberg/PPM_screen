@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>270</width>
-    <height>200</height>
+    <width>365</width>
+    <height>220</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -55,7 +55,7 @@
      </property>
     </widget>
    </item>
-   <item row="0" column="2">
+   <item row="0" column="2" colspan="2">
     <widget class="PyDMEnumComboBox" name="yStateComboBox">
      <property name="enabled">
       <bool>false</bool>
@@ -103,7 +103,7 @@
      </property>
     </widget>
    </item>
-   <item row="1" column="2">
+   <item row="1" column="2" colspan="2">
     <widget class="PyDMLineEdit" name="yPosLineEdit">
      <property name="minimumSize">
       <size>
@@ -120,141 +120,46 @@
     </widget>
    </item>
    <item row="2" column="0">
-    <widget class="QLabel" name="zoomLabel">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
+    <widget class="QLabel" name="label">
      <property name="text">
-      <string>Zoom</string>
+      <string>Legacy</string>
      </property>
     </widget>
    </item>
    <item row="2" column="1">
-    <widget class="PyDMLabel" name="zoomReadback">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
+    <widget class="PyDMLabel" name="yagLabel">
      <property name="toolTip">
       <string/>
-     </property>
-     <property name="channel" stdset="0">
-      <string>ca://IM1L0:XTES:CLZ.RBV</string>
      </property>
     </widget>
    </item>
    <item row="2" column="2">
-    <widget class="PyDMLineEdit" name="zoomLineEdit">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
+    <widget class="PyDMPushButton" name="yagPushButton">
      <property name="toolTip">
       <string/>
      </property>
-     <property name="channel" stdset="0">
-      <string>ca://IM1L0:XTES:CLZ.VAL</string>
+     <property name="text">
+      <string>YAG</string>
+     </property>
+     <property name="pressValue" stdset="0">
+      <string>1</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="3">
+    <widget class="PyDMPushButton" name="outPushButton">
+     <property name="toolTip">
+      <string/>
+     </property>
+     <property name="text">
+      <string>OUT</string>
+     </property>
+     <property name="pressValue" stdset="0">
+      <string>1</string>
      </property>
     </widget>
    </item>
    <item row="3" column="0">
-    <widget class="QLabel" name="focusLabel">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="text">
-      <string>Focus</string>
-     </property>
-    </widget>
-   </item>
-   <item row="3" column="1">
-    <widget class="PyDMLabel" name="focusReadback">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="toolTip">
-      <string/>
-     </property>
-     <property name="channel" stdset="0">
-      <string>ca://IM1L0:XTES:CLF.RBV</string>
-     </property>
-    </widget>
-   </item>
-   <item row="3" column="2">
-    <widget class="PyDMLineEdit" name="focusLineEdit">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="toolTip">
-      <string/>
-     </property>
-     <property name="channel" stdset="0">
-      <string>ca://IM1L0:XTES:CLF.VAL</string>
-     </property>
-    </widget>
-   </item>
-   <item row="4" column="0">
-    <widget class="QLabel" name="ndLabel">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="text">
-      <string>ND filter</string>
-     </property>
-    </widget>
-   </item>
-   <item row="4" column="1">
-    <widget class="PyDMLabel" name="ndStateReadback">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="toolTip">
-      <string/>
-     </property>
-     <property name="channel" stdset="0">
-      <string>ca://IM1L0:XTES:MFW:GET_RBV</string>
-     </property>
-    </widget>
-   </item>
-   <item row="4" column="2">
-    <widget class="PyDMEnumComboBox" name="ndStateComboBox">
-     <property name="minimumSize">
-      <size>
-       <width>80</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="toolTip">
-      <string/>
-     </property>
-     <property name="channel" stdset="0">
-      <string>ca://IM1L0:XTES:MFW:SET</string>
-     </property>
-    </widget>
-   </item>
-   <item row="5" column="0">
     <widget class="QLabel" name="acquireLabel">
      <property name="minimumSize">
       <size>
@@ -267,7 +172,7 @@
      </property>
     </widget>
    </item>
-   <item row="5" column="1">
+   <item row="3" column="1">
     <widget class="PyDMLabel" name="acquireReadback">
      <property name="minimumSize">
       <size>
@@ -283,7 +188,7 @@
      </property>
     </widget>
    </item>
-   <item row="5" column="2">
+   <item row="3" column="2" colspan="2">
     <widget class="PyDMLineEdit" name="acquireLineEdit">
      <property name="minimumSize">
       <size>
@@ -299,7 +204,7 @@
      </property>
     </widget>
    </item>
-   <item row="6" column="0" colspan="2">
+   <item row="4" column="0" colspan="2">
     <widget class="QPushButton" name="nominalButton">
      <property name="minimumSize">
       <size>
@@ -312,7 +217,7 @@
      </property>
     </widget>
    </item>
-   <item row="6" column="2">
+   <item row="4" column="2" colspan="2">
     <widget class="QPushButton" name="expertButton">
      <property name="text">
       <string>Expert Screen</string>
@@ -336,6 +241,11 @@
    <class>PyDMLineEdit</class>
    <extends>QLineEdit</extends>
    <header>pydm.widgets.line_edit</header>
+  </customwidget>
+  <customwidget>
+   <class>PyDMPushButton</class>
+   <extends>QPushButton</extends>
+   <header>pydm.widgets.pushbutton</header>
   </customwidget>
  </customwidgets>
  <resources/>

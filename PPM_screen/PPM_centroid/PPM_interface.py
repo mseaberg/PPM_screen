@@ -579,7 +579,13 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         #self.imagerpv = self.imagerpv_list[index]
         self.imagerpv = self.curr_imager_dict['prefix']
-        self.imagerControls.change_imager(self.imagerpv)
+        if 'IM' in self.imagerpv:
+            motor_prefix = None
+            mms_num = None
+        else:
+            motor_prefix = self.curr_imager_dict['motor']
+            mms_num = self.curr_imager_dict['mms_num']
+        self.imagerControls.change_imager(self.curr_imager_dict)
         self.imagerStats.change_imager(self.imagerpv)
 
         # hdf5 object
