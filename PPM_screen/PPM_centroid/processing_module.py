@@ -93,7 +93,7 @@ class RunProcessing(QtCore.QObject):
         if self.hutch=='lfe':
             self.timer.setInterval(2000)
         else:
-            self.timer.setInterval(500)
+            self.timer.setInterval(200)
         self.timer.timeout.connect(self._update)
 
         #self._update()
@@ -128,7 +128,6 @@ class RunProcessing(QtCore.QObject):
 
             # get latest image
             self.PPM_object.get_image(angle=angle)
-            
             # wavefront sensing
             if self.WFS_object is not None:
                 wfs_data, wfs_param = self.PPM_object.retrieve_wavefront(self.WFS_object, focusFOV=focusFOV, focus_z=focus_z)

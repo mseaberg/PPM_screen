@@ -33,8 +33,8 @@ class Alignment(QtCore.QObject):
         else:
             self.cam_name = self.imager_prefix
 
-        self.x_target = SignalRO(self.cam_name+'X_RTCL_CTR', auto_monitor=True)
-        self.y_target = SignalRO(self.cam_name+'Y_RTCL_CTR', auto_monitor=True)
+        self.x_target = SignalRO(self.cam_name+'X_RTCL_CTR').get()
+        self.y_target = SignalRO(self.cam_name+'Y_RTCL_CTR').get()
         x_centroid = SignalRO(self.imager_prefix+'X_BM_CTR')
         y_centroid = SignalRO(self.imager_prefix+'Y_BM_CTR')
 
@@ -74,15 +74,15 @@ class Alignment(QtCore.QObject):
 
             # check centroid before moving anything
             cen_x, cen_y = self.get_centroid()
-            print(cen_x - self.x_target.value)
+            print(cen_x - self.x_target)
 
-            self.error = cen_x - self.x_target.value
+            self.error = cen_x - self.x_target
             # move mirror slightly
             print('moving mirror')
             print(self.mirror.pitch.get())
             self.mirror.pitch.mvr(0.2, wait=True)
             cen_x, cen_y = self.get_centroid()
-            self.new_error = cen_x - self.x_target.value
+            self.new_error = cen_x - self.x_target
             self.calib = (self.new_error - self.error) / 0.2
             self._update()
             # print(self.new_error)
@@ -114,7 +114,7 @@ class Alignment(QtCore.QObject):
             print(adj)
             self.mirror.pitch.mvr(adj, wait=True)
             cen_x, cen_y = self.get_centroid()
-            self.new_error = cen_x - self.x_target.value
+            self.new_error = cen_x - self.x_target
             print(self.new_error)
             if self.new_error>20:
                 QtCore.QTimer.singleShot(200, self._update)
@@ -132,13 +132,13 @@ class Alignment(QtCore.QObject):
 
             # check centroid before moving anything
             cen_x, cen_y = self.get_centroid()
-            print(cen_x - self.x_target.value)
+            print(cen_x - self.x_target)
 
-            self.error = cen_x - self.x_target.value
+            self.error = cen_x - self.x_target
             # move undulator slightly
             #self.undulator.move(position=20, wait=True)
             cen_x, cen_y = self.get_centroid()
-            self.new_error = cen_x - self.x_target.value
+            self.new_error = cen_x - self.x_target
             self.calib = (self.new_error - self.error) / 0.2
             print(self.new_error)
             self._und_update()
@@ -170,7 +170,7 @@ class Alignment(QtCore.QObject):
             print(adj)
             # self.undulator.move(adj, wait=True)
             cen_x, cen_y = self.get_centroid()
-            self.new_error = cen_x - self.x_target.value
+            self.new_error = cen_x - self.x_target
             print(self.new_error)
             if self.new_error>20:
                 QtCore.QTimer.singleShot(200, self._und_update)
@@ -186,8 +186,8 @@ class Alignment(QtCore.QObject):
 class Motor():
     def __init__(self, pv_name):
         self.setpoint = Signal(pv_name)
-        self.rbv = SignalRO(pv_name+'.RBV', auto_monitor=True)
-        self.moving = SignalRO(pv_name + '.MOVN', auto_monitor=True)
+        self.rbv = SignalRO(pv_name+'.RBV')
+        self.moving = SignalRO(pv_name + '.MOVN')
 
     def mv(self, target, wait=True):
         self.set(target)
@@ -205,7 +205,7 @@ class Motor():
         self.mv(target, wait=wait)
 
     def get(self):
-        return self.rbv.value
+        return self.rbv.get()
 
     def set(self, target):
         self.setpoint.set(target)
