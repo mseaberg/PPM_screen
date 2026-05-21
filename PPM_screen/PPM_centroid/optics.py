@@ -3629,7 +3629,7 @@ class PPM_Device(PPM):
             self.projection_y = np.mean(masked_profile,axis=1)
 
         # get beam statistics
-        #self.cx, self.cy, self.wx, self.wy, wx2, wy2 = self.beam_analysis(self.projection_x, self.projection_y)
+        self.cx, self.cy, self.wx, self.wy, wx2, wy2 = self.beam_analysis(self.projection_x, self.projection_y)
         # add imager state to validity
         if 'MONO' in self.imager_prefix or 'SL' in self.imager_prefix:
             imager_state = 'YAG'

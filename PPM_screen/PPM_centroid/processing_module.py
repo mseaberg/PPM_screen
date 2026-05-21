@@ -114,7 +114,7 @@ class RunProcessing(QtCore.QObject):
         return width, height
 
     def _update(self):
-        time1 = time.time()
+        #time1 = time.time()
         if self.running:
 
             if self.displayWidget is not None:
@@ -147,8 +147,8 @@ class RunProcessing(QtCore.QObject):
         else:
             self.sig_finished.emit()
             self.timer.stop()
-        time2 = time.time()
-        print('calculation: {}'.format(time2-time1))
+        #time2 = time.time()
+        #print('calculation: {}'.format(time2-time1))
 
     def stop(self):
         self.running = False

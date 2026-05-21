@@ -22,6 +22,9 @@ class Alignment(QtCore.QObject):
         self.calib = None
         self.error = None
         self.new_error = None
+        self.error_y = None
+        self.new_error_y = None
+        self.calib_y = None
 
         if mirror_prefix == 'und':
             self.undulator = UndPointDelta2D(prefix="MFX:USER:MCC:UND",name='undulator')
@@ -35,9 +38,9 @@ class Alignment(QtCore.QObject):
 
         self.x_target = SignalRO(self.cam_name+'X_RTCL_CTR').get()
         self.y_target = SignalRO(self.cam_name+'Y_RTCL_CTR').get()
-        x_centroid = SignalRO(self.imager_prefix+'X_BM_CTR')
-        y_centroid = SignalRO(self.imager_prefix+'Y_BM_CTR')
-
+        x_centroid = SignalRO(self.cam_name+'X_BM_CTR')
+        y_centroid = SignalRO(self.cam_name+'Y_BM_CTR')
+        print(x_centroid.get())
 
         self.avg_x_centroid = AvgSignal(x_centroid, 10, 2, name='avg_x_centroid')
         self.avg_y_centroid = AvgSignal(y_centroid, 10, 2, name='avg_y_centroid')
@@ -80,10 +83,11 @@ class Alignment(QtCore.QObject):
             # move mirror slightly
             print('moving mirror')
             print(self.mirror.pitch.get())
-            self.mirror.pitch.mvr(0.2, wait=True)
+            self.mirror.pitch.mvr(1, wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target
-            self.calib = (self.new_error - self.error) / 0.2
+            self.calib = (self.new_error - self.error) / 1
+            print('calibration: {} um/urad'.format(self.calib))
             self._update()
             # print(self.new_error)
             # #while np.abs(new_error) > 50:
@@ -116,7 +120,7 @@ class Alignment(QtCore.QObject):
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target
             print(self.new_error)
-            if self.new_error>20:
+            if np.abs(self.new_error)>20:
                 QtCore.QTimer.singleShot(200, self._update)
             else:
                 print('alignment completed')
@@ -135,11 +139,14 @@ class Alignment(QtCore.QObject):
             print(cen_x - self.x_target)
 
             self.error = cen_x - self.x_target
+            self.error_y = cen_y - self.y_target
             # move undulator slightly
-            #self.undulator.move(position=20, wait=True)
+            self.undulator.move(position=(20,20),wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target
-            self.calib = (self.new_error - self.error) / 0.2
+            self.new_error_y = cen_y - self.y_target
+            self.calib = (self.new_error - self.error) / 20
+            self.calib_y = (self.new_error_y - self.error_y) / 20
             print(self.new_error)
             self._und_update()
             # #while np.abs(new_error) > 50:
@@ -161,6 +168,7 @@ class Alignment(QtCore.QObject):
         if self.running:
             try:
                 adj = -self.new_error / self.calib
+                adj_y = -self.new_error_y / self.calib_y
             except ZeroDivisionError:
                 print('problem with calibration')
                 self.sig_finished.emit()
@@ -168,11 +176,16 @@ class Alignment(QtCore.QObject):
 
 
             print(adj)
-            # self.undulator.move(adj, wait=True)
+            if np.abs(adj)>50:
+                adj = np.sign(adj)*50
+            if np.abs(adj_y)>50:
+                adj_y = np.sign(adj_y)*50
+            self.undulator.move((adj,adj_y), wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target
-            print(self.new_error)
-            if self.new_error>20:
+            self.new_error_y = cen_y - self.y_target
+            print(self.new_error_y)
+            if np.abs(self.new_error)>20 or np.abs(self.new_error_y)>20:
                 QtCore.QTimer.singleShot(200, self._und_update)
             else:
                 print('alignment completed')

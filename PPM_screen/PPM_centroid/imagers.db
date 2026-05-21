@@ -240,7 +240,10 @@
     "xrt_yag3": {
         "orientation": "action90"
     },
+    "xrt_yag2": {
+        "orientation": "action90"
+    },
     "xrt_yag1": {
-        "orientation": "action180"
+        "orientation": "action90"
     }
 }

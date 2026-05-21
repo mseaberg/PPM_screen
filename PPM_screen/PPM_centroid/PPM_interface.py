@@ -825,7 +825,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             This is where all the data to display is stored
         """
        
-        time1 = time.time()
+        #time1 = time.time()
         data_dict = self.data_handler.data_dict
 
         # get validity
@@ -899,5 +899,5 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         for plot in self.plots:
             plot.update_plot(data_dict, self.data_handler.plot_keys())
-        time2 = time.time()
-        print('plot update: {}'.format(time2-time1))
+        #time2 = time.time()
+        #print('plot update: {}'.format(time2-time1))
