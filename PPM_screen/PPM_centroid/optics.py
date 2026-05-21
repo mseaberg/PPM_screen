@@ -1,10 +1,7 @@
 """
-optics1d_normal module
+optics module
 
 Part of the xraybeamline2d package.
-
-This module keeps track of the linear phase separately but includes quadratic phase with higher orders. Eventually
-integrate this with optics1d with quadratic phase as an option.
 
 Currently implements the following optical elements:
 Mirror: parent mirror class
@@ -20,15 +17,26 @@ PPM: power profile monitor, for viewing beam intensity
 """
 import numpy as np
 import matplotlib.pyplot as plt
+import json
+from time import sleep
 import scipy.interpolate as interpolation
 import scipy.ndimage as ndimage
 import scipy.optimize as optimize
 import scipy.spatial.transform as transform
+import skimage.transform as sktransform
+from skimage.restoration import unwrap_phase
+from datetime import datetime
 import os
+import pickle
 from .util import Util
-from .pitch import TalbotLineout
-import scipy.interpolate as interpolate
-import time
+try:
+    from epics import PV
+    from pcdsdevices.areadetector.detectors import PCDSAreaDetector
+    from ophyd import EpicsSignal
+    from ophyd import EpicsSignalRO
+    from ophyd import Component as Cpt
+except ImportError:
+    print("Can't find epics package. PPM_Imager class will not be supported")
 
 
 class Mirror:
@@ -221,9 +229,9 @@ class Mirror:
 
             # coordinate mapping for interpolation
             zi = beam.x / np.sin(total_alpha)
-            zi_1d = zi
+            zi_1d = zi[0, :]
             yi = beam.y
-            yi_1d = yi
+            yi_1d = yi[:, 0]
 
         elif self.orientation == 1:
 
@@ -236,9 +244,9 @@ class Mirror:
 
             # coordinate mapping for interpolation
             zi = beam.y / np.sin(total_alpha)
-            zi_1d = zi
+            zi_1d = zi[:, 0]
             yi = -beam.x
-            yi_1d = yi
+            yi_1d = yi[0, :]
 
         elif self.orientation == 2:
 
@@ -251,9 +259,9 @@ class Mirror:
 
             # coordinate mapping for interpolation
             zi = -beam.x / np.sin(total_alpha)
-            zi_1d = zi
+            zi_1d = zi[0, :]
             yi = -beam.y
-            yi_1d = yi
+            yi_1d = yi[:, 0]
 
         elif self.orientation == 3:
 
@@ -266,9 +274,9 @@ class Mirror:
 
             # coordinate mapping for interpolation
             zi = -beam.y / np.sin(total_alpha)
-            zi_1d = zi
+            zi_1d = zi[:, 0]
             yi = beam.x
-            yi_1d = yi
+            yi_1d = yi[0, :]
 
         k_i = np.array([k_ix, k_iy, k_iz])
         delta_k = self.rotation(k_i)
@@ -287,7 +295,9 @@ class Mirror:
                 # mirror coordinates
                 zs = np.linspace(-Ms / 2, Ms / 2 - 1, Ms) * max_zs / (Ms / 2 - 1)
                 # 1D interpolation onto beam coordinates
-                shapeError2 = np.interp(zi_1d - self.dx / np.tan(total_alpha), zs, self.shapeError)
+                central_line = np.interp(zi_1d - self.dx / np.tan(total_alpha), zs, self.shapeError)
+                # tile onto mirror short axis direction
+                shapeError2 = np.tile(central_line, (np.size(yi_1d), 1))
             # if 2D, assume index 0 corresponds to short axis, index 1 to long axis
             else:
                 # shape error array shape
@@ -297,12 +307,19 @@ class Mirror:
                 max_xs = self.length / 2
                 # mirror coordinates
                 zs = np.linspace(-Ms / 2, Ms / 2 - 1, Ms) * max_xs / (Ms / 2 - 1)
+                max_ys = self.width / 2
+                ys = np.linspace(-Ns / 2, Ns / 2 - 1, Ns) * max_ys / (Ns / 2 - 1)
 
-                # just take central line for 1d shape error
-                shapeError2 = np.interp(zi_1d - self.dx / np.tan(total_alpha), zs, self.shapeError[int(Ns/2),:])
+                # 2D interpolation onto beam coordinates
+                f = interpolation.interp2d(zs, ys, self.shapeError, fill_value=0)
+                shapeError2 = f(zi_1d - self.dx / np.tan(total_alpha), yi_1d - self.dy)
 
         # figure out aperturing due to mirror's finite size
         z_mask = (np.abs(zi - self.dx / np.tan(total_alpha)) < self.length / 2).astype(float)
+        y_mask = (np.abs(yi - self.dy) < self.width / 2).astype(float)
+
+        # 2D mirror aperture (1's and 0's)
+        mirror = z_mask * y_mask
 
         # height error now in meters
         total_error = shapeError2 * 1e-9
@@ -310,12 +327,11 @@ class Mirror:
         # convert to phase error (additional factor of 2 due to reflection
         phase = -total_error * 4 * np.pi * np.sin(total_alpha) / beam.lambda0
 
+        # modify beam's wave attribute by mirror aperture and phase error
+        beam.wave *= mirror * np.exp(1j * phase)
+
         # now change outgoing beam k-vector based on mirror orientation
         if self.orientation == 0:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavex *= z_mask * np.exp(1j * phase)
-
             # take into account mirror reflection causing beam to invert
             beam.x *= -1
 
@@ -329,10 +345,6 @@ class Mirror:
             beam.x = beam.x + delta_cx
 
         elif self.orientation == 1:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavey *= z_mask * np.exp(1j * phase)
-
             # take into account mirror reflection causing beam to invert
             beam.y *= -1
 
@@ -346,10 +358,6 @@ class Mirror:
             beam.y = beam.y + delta_cy
 
         elif self.orientation == 2:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavex *= z_mask * np.exp(1j * phase)
-
             # take into account mirror reflection causing beam to invert
             beam.x *= -1
 
@@ -363,10 +371,6 @@ class Mirror:
             beam.x = beam.x + delta_cx
 
         elif self.orientation == 3:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavey *= z_mask * np.exp(1j * phase)
-
             # take into account mirror reflection causing beam to invert
             beam.y *= -1
 
@@ -456,6 +460,70 @@ class FlatMirror(Mirror):
         super().__init__(name, **kwargs)
 
 
+class Crystal(Mirror):
+    """
+    Class for crystal optics used for hard X-rays. Child of the Mirror class. For now assume that coordinate system
+    is such that desired diffraction angle equals incidence angle.
+
+    Attributes
+    ----------
+    name: str
+        Name of the mirror (e.g. MR1L0)
+    length: float
+        Length of the mirror in meters (long direction)
+    width: float
+        Width of the mirror in meters (short direction)
+    alpha: float
+        Nominal glancing angle of incidence (rad)
+    z: float
+        Longitudinal position along beamline (meters)
+    orientation: int
+        Mirror deflection orientation: 0, 1, 2, 3 (see Figure 1 in documentation)
+    shapeError: ndarray, with shape (M,) or (N,M)
+        Shape error of the mirror. If 1D, assumed to be along the long dimension. If 2D, the 0th index corresponds
+        to the short dimension, and the 1st index corresponds to the long dimension. Units are in nanometers.
+        Can be any 1D or 2D shape, will be assumed to cover the extent of the mirror and will be interpolated onto
+        beam coordinates.
+    dx: float
+        Shift of the mirror normal to the mirror surface (meters)
+    dy: float
+        Shift of the mirror parallel to the mirror Y-axis (meters)
+    delta: float
+        Adjustment to the glancing angle of incidence in radians (counter-clockwise rotation about mirror Y-axis)
+    roll: float
+        Adjustment of the roll angle (counter-clockwise rotation about mirror X-axis)
+    yaw: float
+        Adjustment of the yaw angle (counter-clockwise rotation about mirror Z-axis)
+    motor_list: list of strings
+        Mirror degrees of freedom available as motorized axes
+    projectWidth: float
+        Mirror length projected onto transverse beam plane (meters)
+    miscut: float
+        miscut angle for crystal
+    """
+
+    def __init__(self, name, miscut=0, material='Si', hkl=None, **kwargs):
+        """
+        Create a Crystal object.
+        :param name: str
+            Name of the crystal optics (e.g. CR1L0)
+        :param miscut: float
+            miscut angle of crystal
+        :param material: str
+            crystal material (default is 'Si', can also be 'C*' for diamond)
+        :param kwargs: any of the following: length, width, alpha, z, orientation, shapeError, delta,
+                                  dx, dy, roll, yaw, motor_list
+            See class attributes for kwargs descriptions of the same name
+        """
+        super().__init__(name, **kwargs)
+        if hkl is None:
+            hkl = [1, 1, 1]
+        self.miscut = miscut
+        self.material = material
+        self.hkl = hkl
+        self.total_alpha = self.alpha + self.delta
+
+
 class CurvedMirror(Mirror):
     """
     Class for a glancing incidence elliptical KB X-ray mirror. Child of the Mirror class.
@@ -525,8 +593,8 @@ class CurvedMirror(Mirror):
         super().__init__(name, **kwargs)
         self.p = p
         self.q = q
-        self.dF1 = dF1
-        self.dF2 = dF2
+        self.df_u = dF1
+        self.df_d = dF2
         self.total_alpha = self.alpha + self.delta
 
     def bend(self, cz):
@@ -536,11 +604,11 @@ class CurvedMirror(Mirror):
             Polynomial coefficients following np.polyfit order convention.
         """
         # calculate 3rd order due to benders
-        p3 = (self.dF2 - self.dF1) / 6 / self.length
+        p3 = (self.df_d - self.df_u) / 6 / self.length
         # calculate 2nd order due to benders
-        p2 = (self.dF1 + self.dF2) / 4
+        p2 = (self.df_u + self.df_d) / 4
 
-        pBend = [p3, p2, 0, 0]
+        pBend = [p3,p2,0,0]
 
         # offset
         # offset = cz - self.dx / np.tan(self.total_alpha)
@@ -656,7 +724,7 @@ class CurvedMirror(Mirror):
 
         # fit to a polynomial
         p_res = np.polyfit(z1 - np.mean(z1), height_error, 4)
-        print(p_res)
+        # print(p_res)
 
         return p_res
 
@@ -705,10 +773,10 @@ class CurvedMirror(Mirror):
 
             # coordinate mapping for interpolation
             zi = beam.x / np.sin(self.total_alpha)
-            zi_1d = zi
+            zi_1d = zi[0, :]
             cz = beam.cx / np.sin(self.total_alpha)
             yi = beam.y
-            yi_1d = yi
+            yi_1d = yi[:, 0]
             cy = beam.cy
 
         elif self.orientation == 1:
@@ -722,10 +790,10 @@ class CurvedMirror(Mirror):
 
             # coordinate mapping for interpolation
             zi = beam.y / np.sin(self.total_alpha)
-            zi_1d = zi
+            zi_1d = zi[:, 0]
             cz = beam.cy / np.sin(self.total_alpha)
             yi = -beam.x
-            yi_1d = yi
+            yi_1d = yi[0, :]
             cy = -beam.cx
 
         elif self.orientation == 2:
@@ -739,10 +807,10 @@ class CurvedMirror(Mirror):
 
             # coordinate mapping for interpolation
             zi = -beam.x / np.sin(self.total_alpha)
-            zi_1d = zi
+            zi_1d = zi[0, :]
             cz = -beam.cx / np.sin(self.total_alpha)
             yi = -beam.y
-            yi_1d = yi
+            yi_1d = yi[:, 0]
             cy = -beam.cy
 
         elif self.orientation == 3:
@@ -756,10 +824,10 @@ class CurvedMirror(Mirror):
 
             # coordinate mapping for interpolation
             zi = -beam.y / np.sin(self.total_alpha)
-            zi_1d = zi
+            zi_1d = zi[:, 0]
             cz = -beam.cy / np.sin(self.total_alpha)
             yi = beam.x
-            yi_1d = yi
+            yi_1d = yi[0, :]
             cy = beam.cx
 
         k_i = np.array([k_ix, k_iy, k_iz])
@@ -779,8 +847,9 @@ class CurvedMirror(Mirror):
                 # mirror coordinates
                 zs = np.linspace(-Ms / 2, Ms / 2 - 1, Ms) * max_zs / (Ms / 2 - 1)
                 # 1D interpolation onto beam coordinates
-                shapeError2 = np.interp(zi_1d - self.dx / np.tan(self.total_alpha), zs, self.shapeError)
-
+                central_line = np.interp(zi_1d - self.dx / np.tan(self.total_alpha), zs, self.shapeError)
+                # tile onto mirror short axis direction
+                shapeError2 = np.tile(central_line, (np.size(yi_1d), 1))
             # if 2D, assume index 0 corresponds to short axis, index 1 to long axis
             else:
                 # shape error array shape
@@ -790,12 +859,19 @@ class CurvedMirror(Mirror):
                 max_xs = self.length / 2
                 # mirror coordinates
                 zs = np.linspace(-Ms / 2, Ms / 2 - 1, Ms) * max_xs / (Ms / 2 - 1)
+                max_ys = self.width / 2
+                ys = np.linspace(-Ns / 2, Ns / 2 - 1, Ns) * max_ys / (Ns / 2 - 1)
 
-                # 1D interpolation onto beam coordinates (just take central line)
-                shapeError2 = np.interp(zi_1d - self.dx / np.tan(self.total_alpha), zs, self.shapeError[int(Ns/2), :])
+                # 2D interpolation onto beam coordinates
+                f = interpolation.interp2d(zs, ys, self.shapeError, fill_value=0)
+                shapeError2 = f(zi_1d - self.dx / np.tan(self.total_alpha), yi_1d - self.dy)
 
         # figure out aperturing due to mirror's finite size
         z_mask = (np.abs(zi - self.dx / np.tan(self.total_alpha)) < self.length / 2).astype(float)
+        y_mask = (np.abs(yi - self.dy) < self.width / 2).astype(float)
+
+        mirror = z_mask * y_mask
+        # self.misalign = self.delta * self.beamx / self.alpha
 
         # calculate effect of ellipse misalignment
         p_misalign = self.calc_misalignment(beam)
@@ -815,21 +891,11 @@ class CurvedMirror(Mirror):
         # get polynomial order
         M_poly = np.size(coeff_total) - 1
 
-        # calculate contributions to high order error (down to 2nd order)
-        total_error = shapeError2 * 1e-9 + Util.polyval_2nd(p_recentered, zi - cz)
+        # calculate contributions to high order error
+        total_error = shapeError2 * 1e-9 + Util.polyval_high_order(p_recentered, zi - cz)
 
         # calculate effect on high order phase for glancing incidence mirror
         phase = -total_error * 4 * np.pi * np.sin(self.total_alpha) / beam.lambda0
-
-        high_order += phase
-
-        # normal 2nd order phase
-        p2 = -1 / (2 * self.p) - 1 / (2 * self.q)
-        p_normal = [p2, 0, 0]
-        # switch to mirror coordinates
-        p_normal_scaled = Util.poly_change_coords(p_normal, 1 / np.sin(self.total_alpha))
-
-        phase = 2*np.pi/beam.lambda0 * Util.polyval_2nd(p_normal_scaled, zi - cz)
 
         # add phase to high_order
         high_order += phase
@@ -859,12 +925,11 @@ class CurvedMirror(Mirror):
         # factor out 2pi/lambda for linear term (so equal to change in propagation angle)
         linear += p_scaled[-2]
 
+        # modify beam's wave attribute by mirror aperture and phase error
+        beam.wave *= mirror * np.exp(1j * high_order)
+
         # now change outgoing beam k-vector based on mirror orientation, and apply quadratic phase
         if self.orientation == 0:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavex *= z_mask * np.exp(1j * high_order)
-
             # take into account mirror reflection causing beam to invert
             beam.x *= -1
 
@@ -873,7 +938,8 @@ class CurvedMirror(Mirror):
             beam.ay += np.arcsin(delta_k[1])
 
             # adjust beam quadratic phase
-            beam.zx = 1 / (1 / beam.zx + quadratic)
+            new_zx = 1 / (1 / beam.zx + quadratic)
+            beam.change_z(new_zx=new_zx)
 
             # adjust beam position due to mirror de-centering
             delta_cx = 2 * self.dx * np.cos(self.total_alpha)
@@ -881,10 +947,6 @@ class CurvedMirror(Mirror):
             beam.x = beam.x + delta_cx
 
         elif self.orientation == 1:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavey *= z_mask * np.exp(1j * high_order)
-
             # take into account mirror reflection causing beam to invert
             beam.y *= -1
 
@@ -893,7 +955,8 @@ class CurvedMirror(Mirror):
             beam.ay = -beam.ay + np.arcsin(delta_k[0] / np.cos(self.alpha)) - linear
 
             # adjust beam quadratic phase
-            beam.zy = 1 / (1 / beam.zy + quadratic)
+            new_zy = 1 / (1 / beam.zy + quadratic)
+            beam.change_z(new_zy=new_zy)
 
             # adjust beam position due to mirror de-centering
             delta_cy = 2 * self.dx * np.cos(self.total_alpha)
@@ -901,10 +964,6 @@ class CurvedMirror(Mirror):
             beam.y = beam.y + delta_cy
 
         elif self.orientation == 2:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavex *= z_mask * np.exp(1j * high_order)
-
             # take into account mirror reflection causing beam to invert
             beam.x *= -1
 
@@ -913,7 +972,8 @@ class CurvedMirror(Mirror):
             beam.ay += -np.arcsin(delta_k[1])
 
             # adjust beam quadratic phase
-            beam.zx = 1 / (1 / beam.zx + quadratic)
+            new_zx = 1 / (1 / beam.zx + quadratic)
+            beam.change_z(new_zx=new_zx)
 
             # adjust beam position due to mirror de-centering
             delta_cx = -2 * self.dx * np.cos(self.total_alpha)
@@ -921,10 +981,6 @@ class CurvedMirror(Mirror):
             beam.x = beam.x + delta_cx
 
         elif self.orientation == 3:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavey *= z_mask * np.exp(1j * high_order)
-
             # take into account mirror reflection causing beam to invert
             beam.y *= -1
 
@@ -933,7 +989,8 @@ class CurvedMirror(Mirror):
             beam.ay = -beam.ay - np.arcsin(delta_k[0] / np.cos(self.alpha)) + linear
 
             # adjust beam quadratic phase
-            beam.zy = 1 / (1 / beam.zy + quadratic)
+            new_zy = 1 / (1 / beam.zy + quadratic)
+            beam.change_z(new_zy=new_zy)
 
             # adjust beam position due to mirror de-centering
             delta_cy = -2 * self.dx * np.cos(self.total_alpha)
@@ -1212,23 +1269,23 @@ class Grating(Mirror):
         Method to calculate output k-vector based on grating orientation
         :param k_i: (3,) ndarray
             initial k-vector in grating coordinates
-        :param lambda1: float
+        :param lambda0: float
             beam wavelength
         :return delta_k: (3,) ndarray
             change in outgoing k-vector (k_f - k_f0)
         """
 
         # figure out mirror vectors:
-        mirror_x = np.array([1, 0, 0], dtype=float)
-        mirror_y = np.array([0, 1, 0], dtype=float)
-        mirror_z = np.array([0, 0, 1], dtype=float)
+        mirror_x0 = np.array([1, 0, 0], dtype=float)
+        mirror_y0 = np.array([0, 1, 0], dtype=float)
+        mirror_z0 = np.array([0, 0, 1], dtype=float)
         grating_vector = np.array([0, 0, 1], dtype=float)
 
-        r1 = transform.Rotation.from_rotvec(mirror_y * self.delta)
+        r1 = transform.Rotation.from_rotvec(mirror_y0 * self.delta)
         Ry = r1.as_matrix()
-        mirror_x = np.matmul(Ry, mirror_x)
-        mirror_y = np.matmul(Ry, mirror_y)
-        mirror_z = np.matmul(Ry, mirror_z)
+        mirror_x = np.matmul(Ry, mirror_x0)
+        mirror_y = np.matmul(Ry, mirror_y0)
+        mirror_z = np.matmul(Ry, mirror_z0)
         grating_vector = np.matmul(Ry, grating_vector)
 
         r2 = transform.Rotation.from_rotvec(mirror_z * self.roll)
@@ -1249,11 +1306,17 @@ class Grating(Mirror):
         # print(mirror_y)
         # print(mirror_z)
 
-        k_f_y = k_i[1]
-        k_f_z = k_i[2] - self.n0 * self.lambda0
-        k_f_x = np.sqrt(1 - np.dot(k_f_y, k_f_y) - np.dot(k_f_z, k_f_z))
+        # normal case when incoming beam has correct incidence angle (at beam center)
+        k_ix_norm = -np.sin(self.alpha)
+        k_iy_norm = 0
+        k_iz_norm = np.cos(self.alpha)
+        k_i_norm = np.array([k_ix_norm, k_iy_norm, k_iz_norm])
 
-        k_f_normal = np.array([k_f_x, k_f_y, k_f_z])
+        # figure out k_f in "normal case"
+        k_f_y = np.dot(k_i_norm, mirror_y0) * mirror_y0  # should be 0
+        k_f_z = np.dot(k_i_norm, mirror_z0) * mirror_z0 - self.n0 * self.lambda0 * mirror_z0
+        k_f_x = np.sqrt(1 - np.dot(k_f_y, k_f_y) - np.dot(k_f_z, k_f_z)) * mirror_x0
+        k_f_normal = k_f_x + k_f_y + k_f_z  # should be same as k_i except x component changed sign
 
         # get component of k_i in direction of grating vector
         k_i_grating = np.dot(k_i, grating_vector)
@@ -1268,10 +1331,10 @@ class Grating(Mirror):
 
         # component of k_f in direction of grating axis (mirror z-axis)
         k_f_g = cos_beta * grating_vector
-        print(np.dot(k_f_g, k_f_g))
+        # print(np.dot(k_f_g, k_f_g))
         # component of k_f in direction of mirror y-axis
         k_f_perp = k_i_y * mirror_y
-        print(np.dot(k_f_perp, k_f_perp))
+        # print(np.dot(k_f_perp, k_f_perp))
         # component of k_f in direction of mirror x-axis (by conservation of momentum
         k_f_x = np.sqrt(1 - np.dot(k_f_g, k_f_g) - np.dot(k_f_perp, k_f_perp)) * mirror_x
 
@@ -1281,11 +1344,7 @@ class Grating(Mirror):
         # calculate difference between outgoing k-vector and the k-vector in absence of grating rotations
         delta_k = k_f - k_f_normal
 
-        print(k_i)
-        print(k_f)
-        print(delta_k)
-
-        return delta_k
+        return delta_k, k_f
 
     def propagate(self, beam):
         """
@@ -1323,9 +1382,8 @@ class Grating(Mirror):
         yi_1d = np.zeros(0)
         cz = 0
         cy = 0
-        beamz = 0
 
-        params = beam.beam_parameters()
+        beamz = 0
 
         if self.orientation == 0:
             k_ix = -np.sin(self.alpha - beam.ax)
@@ -1334,16 +1392,18 @@ class Grating(Mirror):
 
             # coordinate mapping for interpolation
             zi = beam.x / np.sin(total_alpha)
-            zi_1d = zi
+            zi_1d = zi[0, :]
             yi = beam.y
-            yi_1d = yi
-            beamz = params['zx']
+            yi_1d = yi[:, 0]
 
             cz = beam.cx / np.sin(total_alpha)
             cy = beam.cy
 
-            alphaBeam = (-beam.ax -
-                         np.arctan((zi_1d - cz) * np.sin(total_alpha) / params['zx']))
+            # beam radius across grating (grating can be long enough that the additional correction is needed
+            zEff = beam.zx + (zi_1d - cz) * np.cos(total_alpha)
+            alphaBeam = -beam.ax - np.arctan((zi_1d - cz) * np.sin(total_alpha) / zEff)
+
+            beamz = beam.zx
 
         elif self.orientation == 1:
             k_ix = -np.sin(self.alpha - beam.ay)
@@ -1352,16 +1412,18 @@ class Grating(Mirror):
 
             # coordinate mapping for interpolation
             zi = beam.y / np.sin(self.alpha + self.delta)
-            zi_1d = zi
+            zi_1d = zi[:, 0]
             yi = -beam.x
-            yi_1d = yi
-            beamz = params['zy']
+            yi_1d = yi[0, :]
 
             cz = beam.cy / np.sin(total_alpha)
             cy = -beam.cx
 
-            alphaBeam = (-beam.ay -
-                         np.arctan((zi_1d - cz) * np.sin(total_alpha) / params['zy']))
+            # beam radius across grating (grating can be long enough that the additional correction is needed
+            zEff = beam.zy + (zi_1d-cz)*np.cos(total_alpha)
+            alphaBeam = -beam.ay - np.arctan((zi_1d - cz) * np.sin(total_alpha) / zEff)
+
+            beamz = beam.zy
 
         elif self.orientation == 2:
             k_ix = -np.sin(self.alpha + beam.ax)
@@ -1370,16 +1432,18 @@ class Grating(Mirror):
 
             # coordinate mapping for interpolation
             zi = -beam.x / np.sin(self.alpha + self.delta)
-            zi_1d = zi
+            zi_1d = zi[0, :]
             yi = -beam.y
-            yi_1d = yi
-            beamz = params['zx']
+            yi_1d = yi[:, 0]
 
             cz = -beam.cx / np.sin(total_alpha)
             cy = -beam.cy
 
-            alphaBeam = (beam.ax -
-                         np.arctan((zi_1d - cz) * np.sin(total_alpha) / params['zx']))
+            # beam radius across grating (grating can be long enough that the additional correction is needed
+            zEff = beam.zx + (zi_1d - cz) * np.cos(total_alpha)
+            alphaBeam = beam.ax - np.arctan((zi_1d - cz) * np.sin(total_alpha) / zEff)
+
+            beamz = beam.zx
 
         elif self.orientation == 3:
             k_ix = -np.sin(self.alpha + beam.ay)
@@ -1388,19 +1452,25 @@ class Grating(Mirror):
 
             # coordinate mapping for interpolation
             zi = -beam.y / np.sin(self.alpha + self.delta)
-            zi_1d = zi
+            zi_1d = zi[:, 0]
             yi = beam.x
-            yi_1d = yi
-            beamz = params['zy']
+            yi_1d = yi[0, :]
 
             cz = -beam.cy / np.sin(total_alpha)
             cy = beam.cx
 
-            alphaBeam = (beam.ay -
-                         np.arctan((zi_1d - cz) * np.sin(total_alpha) / params['zy']))
+            # beam radius across grating (grating can be long enough that the additional correction is needed
+            zEff = beam.zy + (zi_1d - cz) * np.cos(total_alpha)
+
+            alphaBeam = beam.ay - np.arctan((zi_1d - cz) * np.sin(total_alpha) / zEff)
+
+            beamz = beam.zy
 
         k_i = np.array([k_ix, k_iy, k_iz])
-        delta_k = self.rotation_grating(k_i, beam.lambda0)
+        delta_k, k_f = self.rotation_grating(k_i, beam.lambda0)
+
+        # beta at beam center
+        beta1 = np.arccos(k_f[2])
 
         # mirror shape error interpolation onto beam coordinates (if applicable)
         if self.shapeError is not None:
@@ -1416,7 +1486,9 @@ class Grating(Mirror):
                 # mirror coordinates
                 zs = np.linspace(-Ms / 2, Ms / 2 - 1, Ms) * max_zs / (Ms / 2 - 1)
                 # 1D interpolation onto beam coordinates
-                shapeError2 = np.interp(zi_1d - self.dx / np.tan(total_alpha), zs, self.shapeError)
+                central_line = np.interp(zi_1d - self.dx / np.tan(total_alpha), zs, self.shapeError)
+                # tile onto mirror short axis direction
+                shapeError2 = np.tile(central_line, (np.size(yi_1d), 1))*1e-9
             # if 2D, assume index 0 corresponds to short axis, index 1 to long axis
             else:
                 # shape error array shape
@@ -1426,9 +1498,19 @@ class Grating(Mirror):
                 max_xs = self.length / 2
                 # mirror coordinates
                 zs = np.linspace(-Ms / 2, Ms / 2 - 1, Ms) * max_xs / (Ms / 2 - 1)
+                max_ys = self.width / 2
+                ys = np.linspace(-Ns / 2, Ns / 2 - 1, Ns) * max_ys / (Ns / 2 - 1)
 
-                # just take central line for 1d shape error
-                shapeError2 = np.interp(zi_1d - self.dx / np.tan(total_alpha), zs, self.shapeError[int(Ns / 2), :])
+                # 2D interpolation onto beam coordinates
+                f = interpolation.interp2d(zs, ys, self.shapeError, fill_value=0)
+                shapeError2 = f(zi_1d - self.dx / np.tan(total_alpha), yi_1d - self.dy)*1e-9
+
+            if self.orientation == 1:
+                shapeError2 = np.swapaxes(shapeError2, 0, 1)
+
+            elif self.orientation == 3:
+                shapeError2 = np.swapaxes(shapeError2, 0, 1)
+
 
         # project beam angle onto grating axis
         # Also take into account grating shift in dx (+dx corresponds to dz = -dx/alpha)
@@ -1437,13 +1519,27 @@ class Grating(Mirror):
         z_g = np.linspace(-self.length / 2, self.length / 2, 1024)
 
         # deviation from average angle of incidence at each point along the grating
-        alphaBeamG = Util.interp_flip(z_g, zi_1d - self.dx / np.tan(total_alpha), alphaBeam)
+        # alphaBeamG = Util.interp_flip(z_g, zi_1d - self.dx / np.tan(total_alpha), alphaBeam)
 
         # account for all contributions to alpha
-        alpha_total = self.alpha + self.delta + alphaBeamG
+        alpha_total = self.alpha + self.delta + alphaBeam
+
+        z_g = zi_1d - self.dx / np.tan(total_alpha)
 
         # calculate diffraction angle at every point on the grating
         beta = np.arccos(np.cos(alpha_total) - beam.lambda0 * (self.n0 + self.n1 * z_g + self.n2 * z_g ** 2))
+
+        # calculate new source position
+        # self.f = beamz*(self.beta0/self.alpha)**2
+
+        # figure out distance to focus
+        D1 = self.n1 / self.n0**2
+        D0 = 1 / self.n0
+        grating_focal_length = 1 / (self.lambda0 * D1 / D0 ** 2 / np.sin(self.beta0) ** 2)
+        object_distance = beamz*(np.sin(self.beta0)/np.sin(self.alpha))**2
+        f2 = 1 / (1 / grating_focal_length - 1 / object_distance)
+        self.f = f2
+        print('Calculated distance to focus: %.6f' % f2)
 
         # calculate desired slope at each point of the grating
         x1 = self.f * np.sin(self.beta0 - self.delta) - self.dx
@@ -1456,49 +1552,56 @@ class Grating(Mirror):
         m = (x1 - x0) / (z1 - z_g)
 
         # calculate slope error
-        slope_error = beta - np.arctan(m)
+        slope_error = -np.tan(beta - np.arctan(m))
+        # slope_error = -np.tan(beta - self.beta0)
+
+        # plt.figure()
+        # plt.plot(z_g, slope_error)
 
         # calculate phase contribution by integrating slope error. This is kind of equivalent to a height error but
         # we don't need to double-count it.
         # (do this with a polynomial fit up to 3rd order for now)
-        p = np.polyfit(z_g, slope_error, 2)
+        # put center of z_g at zero
+        # limit this to size of grating
+        mask = np.abs(z_g) <= self.length/2
+        p = np.polyfit(z_g[mask], slope_error[mask], 3)
 
-        # integrate slope error
+        # integrate slope error (eventually move integration to after change of coordinates)
         p_int = np.polyint(p)
+
+        # --- high order coefficients
+        # change coordinate systems to new beam coordinates
+        # scaling between grating z-axis and new beam coordinates
+        scale = np.sin(self.beta0 - self.delta)
+        p_scaled = Util.poly_change_coords(p_int, scale) * np.sin(self.beta0 - self.delta)
 
         # offset from center (along mirror z-axis)
         offset = cz - self.dx / np.tan(total_alpha)
 
+        # scale the offset
+        offset_scaled = offset * scale
+
+        p_centered = Util.recenter_coeff(p_scaled, offset_scaled)
+
+        # high order phase
+        high_order = (2 * np.pi / beam.lambda0 * Util.polyval_high_order(p_centered, (zi-cz)*np.sin(self.beta0)))
+
+        # offset from center (along mirror z-axis)
+        offset = cz - self.dx / np.tan(total_alpha)
+
+        # change coordinate systems to get back into beam coordinates
+        # p_scaled = Util.poly_change_coords(p_int, scale) * np.sin(self.beta0 - self.delta)
+        #
+        # # scale the offset
+        # offset_scaled = offset * scale
+
         # account for decentering
         p_recentered = Util.recenter_coeff(p_int, offset)
 
-        # high order phase down to second order. Multiplied by sin(beta) because integration should actually happen in beam coordinates.
-        high_order = (2 * np.pi / beam.lambda0 * Util.polyval_2nd(p_recentered, zi - cz) *
-                      np.sin(self.beta0 - self.delta))
+        # high order phase. Multiplied by sin(beta) because integration should actually happen in beam coordinates.
+        # high_order = (2 * np.pi / beam.lambda0 * Util.polyval_high_order(p_recentered, zi - cz))
 
-        scale = np.sin(self.alpha + self.delta)
-
-        # subtract old 2nd order phase
-        print('beam z: %.2f' % beamz)
-        p2 = -1 / (2 * beamz)
-        p_sub = [p2, 0, 0]
-        # switch to grating coordinates
-        p_sub_scaled = Util.poly_change_coords(p_sub, 1/scale)
-
-        # scaling between grating z-axis and new beam coordinates
-        scale = np.sin(self.beta0 - self.delta)
-
-        # normal 2nd order phase
-        p2 = -1 / (2 * self.f)
-        p_normal = [p2, 0, 0]
-        # switch to grating coordinates
-        p_normal_scaled = Util.poly_change_coords(p_normal, 1/scale)
-
-        phase = 2*np.pi/beam.lambda0 * Util.polyval_2nd(p_normal_scaled + p_sub_scaled, zi - cz)
-
-        # add phase to high_order
-        high_order += phase
-
+        # --- low order coefficients
         # change coordinate systems to get proper low-order coefficients. Multiplied by sin(beta) because integration
         # should actually happen in beam coordinates.
         p_scaled = Util.poly_change_coords(p_int, scale) * np.sin(self.beta0 - self.delta)
@@ -1514,12 +1617,12 @@ class Grating(Mirror):
 
         # 2nd order phase (factoring out pi/lambda)
         p2nd = 2 * p_centered[-3]
-        print('z: %.2f' % (1/p2nd))
+        # print('z: %.2f' % (1/p2nd))
 
         # 1st order phase (factoring out 2 pi/lambda)
         # (only add any 1st order phase due to de-centering since the rest is already accounted for in delta_k).
         p1st = p_centered[-2] - p_scaled[-2]
-        print(p1st)
+        # print(p1st)
 
         # figure out aperturing due to mirror's finite size
         z_mask = (np.abs(zi - self.dx / np.tan(total_alpha)) < self.length / 2).astype(float)
@@ -1529,24 +1632,24 @@ class Grating(Mirror):
         mirror = z_mask * y_mask
 
         # add shape error contribution to phase error
-        high_order += (-4 * np.pi / beam.lambda0 / np.sin(total_alpha) *
-                       np.sin((total_alpha + self.beta0 - self.delta) / 2) ** 2 * shapeError2)
+        high_order += (-4*np.pi/beam.lambda0/np.sin(total_alpha) *
+                       np.sin((total_alpha+self.beta0-self.delta)/2)**2 * shapeError2)
+
+        # multiply beam by aperture and phase
+        beam.wave *= mirror * np.exp(1j * high_order)
 
         # handle beam re-pointing depending on the orientation
         if self.orientation == 0:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavex *= z_mask * np.exp(1j * high_order)
-
             # take into account coordinate rescaling
             beam.x -= beam.cx
-            beam.rescale_x(self.beta0 / self.alpha)
-            beam.cx *= self.beta0 / self.alpha
+            beam.rescale_x(np.sin(self.beta0) / np.sin(self.alpha))
+            beam.cx *= np.sin(self.beta0) / np.sin(self.alpha)
             beam.x += beam.cx
 
             # add quadratic phase
             # beam.zx = 1 / (1 / beam.zx + p2nd)
-            beam.zx = 1 / p2nd
+            new_zx = 1 / p2nd
+            beam.change_z(new_zx=new_zx)
 
             # take into account mirror reflection causing beam to invert
             beam.x *= -1
@@ -1561,19 +1664,16 @@ class Grating(Mirror):
             beam.x = beam.x + delta_cx
 
         elif self.orientation == 1:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavey *= z_mask * np.exp(1j * high_order)
-
             # take into account coordinate rescaling
             beam.y -= beam.cy
-            beam.rescale_y(self.beta0 / self.alpha)
-            beam.cy *= self.beta0 / self.alpha
+            beam.rescale_y(np.sin(self.beta0) / np.sin(self.alpha))
+            beam.cy *= np.sin(self.beta0) / np.sin(self.alpha)
             beam.y += beam.cy
 
             # add quadratic phase
             # beam.zy = 1 / (1 / beam.zy + p2nd)
-            beam.zy = 1 / p2nd
+            new_zy = 1 / p2nd
+            beam.change_z(new_zy=new_zy)
 
             # take into account mirror reflection causing beam to invert
             beam.y *= -1
@@ -1588,19 +1688,17 @@ class Grating(Mirror):
             beam.y = beam.y + delta_cy
 
         elif self.orientation == 2:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavex *= z_mask * np.exp(1j * high_order)
-
             # take into account coordinate rescaling
             beam.x -= beam.cx
-            beam.rescale_x(self.beta0 / self.alpha)
-            beam.cx *= self.beta0 / self.alpha
+            beam.rescale_x(np.sin(self.beta0) / np.sin(self.alpha))
+            beam.cx *= np.sin(self.beta0) / np.sin(self.alpha)
             beam.x += beam.cx
 
             # add quadratic phase
             # beam.zx = 1 / (1 / beam.zx + p2nd)
-            beam.zx = 1 / p2nd
+            new_zx = 1 / p2nd
+            beam.change_z(new_zx=new_zx)
+            
 
             # take into account mirror reflection causing beam to invert
             beam.x *= -1
@@ -1615,19 +1713,16 @@ class Grating(Mirror):
             beam.x = beam.x + delta_cx
 
         elif self.orientation == 3:
-
-            # modify beam's wave attribute by mirror aperture and phase error
-            beam.wavey *= z_mask * np.exp(1j * high_order)
-
             # take into account coordinate rescaling
             beam.y -= beam.cy
-            beam.rescale_y(self.beta0 / self.alpha)
-            beam.cy *= self.beta0 / self.alpha
+            beam.rescale_y(np.sin(self.beta0) / np.sin(self.alpha))
+            beam.cy *= np.sin(self.beta0) / np.sin(self.alpha)
             beam.y += beam.cy
 
             # add quadratic phase
             # beam.zy = 1 / (1 / beam.zy + p2nd)
-            beam.zy = 1 / p2nd
+            new_zy = 1 / p2nd
+            beam.change_z(new_zy=new_zy)
 
             # take into account mirror reflection causing beam to invert
             beam.y *= -1
@@ -1691,11 +1786,9 @@ class Collimator:
         :return: None
         """
         # define aperture in beam coordinates
-        # aperture = (np.abs((beam.x - self.dx) ** 2 +
-        # (beam.y - self.dy) ** 2) < (self.diameter / 2) ** 2).astype(float)
-        # # multiply beam by aperture
-        # beam.wave *= aperture
-        print('not implemented in 1D')
+        aperture = (np.abs((beam.x - self.dx) ** 2 + (beam.y - self.dy) ** 2) < (self.diameter / 2) ** 2).astype(float)
+        # multiply beam by aperture
+        beam.wave *= aperture
 
     def propagate(self, beam):
         """
@@ -1758,12 +1851,11 @@ class Slit:
         :return: None
         """
         # define slit aperture in beam coordinates
-        aperture_x = (np.abs(beam.x - self.dx) < self.x_width / 2).astype(float)
-        aperture_y = (np.abs(beam.y - self.dy) < self.y_width / 2).astype(float)
+        aperture = ((np.abs(beam.x - self.dx) < self.x_width / 2).astype(float) *
+                    (np.abs(beam.y - self.dy) < self.y_width / 2).astype(float))
 
         # multiply beam by aperture
-        beam.wavex *= aperture_x
-        beam.wavey *= aperture_y
+        beam.wave *= aperture
 
     def propagate(self, beam):
         """
@@ -1773,14 +1865,6 @@ class Slit:
         :return: None
         """
         self.multiply(beam)
-
-    def set_x_width(self, width):
-        print('set width')
-        self.x_width = width
-
-    def set_y_width(self, width):
-        print('set width')
-        self.y_width = width
 
 
 class Drift:
@@ -1834,7 +1918,124 @@ class Drift:
         """
         # propagate the beam along the full length of the Drift.
         beam.beam_prop(self.dz)
-        print(self.name + ': '+str(self.dz))
+
+
+class Prism:
+    """
+    Class to represent a hard X-ray prism.
+
+    Attributes
+    ----------
+    name: str
+        Name of the device (e.g. PRM1)
+    x_width: float
+        horizontal size of prism
+    y_width: float
+        vertical size of prism
+    slope: float
+        thickness gradient (dimensionless)
+    orientation: int
+        defined as 0: thicker to +x; 1: thicker to +y; 2: thicker to -x; 3: thicker to -y
+    material: str
+        default to Beryllium
+    z: float
+        location along beamline
+    dx: float
+        horizontal de-centering relative to beam axis
+    dy: float
+        vertical de-centering relative to beam axis
+    """
+
+    def __init__(self, name, x_width=100e-6, y_width=100e-6, slope=100e-6, material='Be', z=0, dx=0, dy=0, orientation=0):
+        """
+        Method to create a prism
+        Parameters
+        ----------
+        name: str
+            Name of the device (e.g. PRM1)
+        x_width: float
+            horizontal size of prism
+        y_width: float
+            vertical size of prism
+        slope: float
+            thickness gradient (dimensionless)
+        material: str
+            default to Beryllium
+        z: float
+            location along beamline
+        dx: float
+            horizontal de-centering relative to beam axis
+        dy: float
+            vertical de-centering relative to beam axis
+        orientation: int
+            defined as 0: thicker to +x; 1: thicker to +y; 2: thicker to -x; 3: thicker to -y
+        """
+
+        # set some attributes
+        self.name = name
+        self.x_width = x_width
+        self.y_width = y_width
+        self.slope = slope
+        self.material = material
+        self.dx = dx
+        self.dy = dy
+        self.z = z
+        self.orientation = orientation
+
+        # get file name of CXRO data
+        filename = os.path.join(os.path.dirname(__file__), 'cxro_data/%s.csv' % self.material)
+
+        # load in CXRO data
+        cxro_data = np.genfromtxt(filename, delimiter=',')
+        self.energy = cxro_data[:, 0]
+        self.delta = cxro_data[:, 1]
+        self.beta = cxro_data[:, 2]
+
+    def multiply(self, beam):
+
+        # interpolate to find index of refraction at beam's energy
+        delta = np.interp(beam.photonEnergy, self.energy, self.delta)
+        beta = np.interp(beam.photonEnergy, self.energy, self.beta)
+
+        # prism aperture
+        aperture = ((np.abs(beam.x - self.dx) < self.x_width / 2).astype(float) *
+                    (np.abs(beam.y - self.dy) < self.y_width / 2).astype(float))
+
+        thickness = np.zeros_like(beam.x)
+        p1_x = 0
+        p1_y = 0
+
+        if self.orientation == 0:
+            thickness = self.slope * (beam.x - self.dx + self.x_width / 2)
+            p1_x = -delta * self.slope
+        elif self.orientation == 1:
+            thickness = self.slope * (beam.y - self.dy + self.y_width / 2)
+            p1_y = -delta * self.slope
+        elif self.orientation == 2:
+            thickness = -self.slope * (beam.x - self.dx - self.x_width / 2)
+            p1_x = delta * self.slope
+        elif self.orientation == 3:
+            thickness = -self.slope * (beam.y - self.dy - self.y_width / 2)
+            p1_y = delta * self.slope
+
+        # prism transmission based on beta and thickness profile
+        transmission = np.exp(-beam.k0 * beta * thickness) * aperture
+
+        # multiply by transmission
+        beam.wave *= transmission
+
+        # adjust beam direction
+        beam.ax += p1_x
+        beam.ay += p1_y
+
+    def propagate(self, beam):
+        """
+        Method to propagate beam through prism. Calls multiply.
+        :param beam: Beam
+            Beam object to propagate through prism. Beam is modified by this method.
+        :return: None
+        """
+        self.multiply(beam)
 
 
 class CRL:
@@ -1913,39 +2114,39 @@ class CRL:
         """
 
         # interpolate to find index of refraction at beam's energy
-        # delta = np.interp(beam.photonEnergy, self.energy, self.delta)
-        # beta = np.interp(beam.photonEnergy, self.energy, self.beta)
-        #
-        # # CRL thickness (for now assuming perfect lenses but might add aberrations later)
-        # thickness = 2 * self.roc * (1 / 2 * ((beam.x - self.dx) ** 2 + (beam.y - self.dy) ** 2) / self.roc ** 2)
-        #
-        # # lens aperture
-        # mask = (((beam.x - self.dx) ** 2 + (beam.y - self.dy) ** 2) < (self.diameter / 2) ** 2).astype(float)
-        #
-        # # subtract 2nd order and linear terms
-        # phase = -beam.k0 * delta * (thickness - 2 / 2 / self.roc * ((beam.x - self.dx) ** 2 +
-        # (beam.y - self.dy) ** 2))
-        #
-        # # 2nd order
-        # p2 = -beam.k0 * delta * 2 / 2 / self.roc
-        # # 1st order
-        # p1_x = p2 * 2 * (beam.cx - self.dx)
-        # p1_y = p2 * 2 * (beam.cy - self.dy)
-        #
-        # # lens transmission based on beta and thickness profile
-        # transmission = np.exp(-beam.k0 * beta * thickness) * np.exp(1j * phase) * mask
-        #
-        # # adjust beam properties
-        # beam.zx = 1 / (1 / beam.zx + p2 * beam.lambda0 / np.pi)
-        # beam.zy = 1 / (1 / beam.zy + p2 * beam.lambda0 / np.pi)
-        #
-        # beam.ax += p1_x * beam.lambda0 / 2 / np.pi
-        # beam.ay += p1_y * beam.lambda0 / 2 / np.pi
-        #
-        # # multiply beam by CRL transmission function and any high order phase
-        # beam.wave *= transmission * np.exp(1j * phase)
+        delta = np.interp(beam.photonEnergy, self.energy, self.delta)
+        beta = np.interp(beam.photonEnergy, self.energy, self.beta)
 
-        print("CRLs not implemented in 1D")
+        # CRL thickness (for now assuming perfect lenses but might add aberrations later)
+        thickness = 2 * self.roc * (1 / 2 * ((beam.x - self.dx) ** 2 + (beam.y - self.dy) ** 2) / self.roc ** 2)
+
+        # lens aperture
+        mask = (((beam.x - self.dx) ** 2 + (beam.y - self.dy) ** 2) < (self.diameter / 2) ** 2).astype(float)
+
+        # subtract 2nd order and linear terms
+        phase = -beam.k0 * delta * (thickness - 2 / 2 / self.roc * ((beam.x - self.dx) ** 2 + (beam.y - self.dy) ** 2))
+
+        # 2nd order
+        p2 = -beam.k0 * delta * 2 / 2 / self.roc
+        # 1st order
+        p1_x = p2 * 2 * (beam.cx - self.dx)
+        p1_y = p2 * 2 * (beam.cy - self.dy)
+
+        # lens transmission based on beta and thickness profile
+        transmission = np.exp(-beam.k0 * beta * thickness) * np.exp(1j * phase) * mask
+
+        # adjust beam properties
+        new_zx = 1 / (1 / beam.zx + p2 * beam.lambda0 / np.pi)
+        new_zy = 1 / (1 / beam.zy + p2 * beam.lambda0 / np.pi)
+        beam.change_z(new_zx=new_zx, new_zy=new_zy)
+
+        print('focal length: %.2f' % (-1/(p2*beam.lambda0/np.pi)))
+
+        beam.ax += p1_x * beam.lambda0 / 2 / np.pi
+        beam.ay += p1_y * beam.lambda0 / 2 / np.pi
+
+        # multiply beam by CRL transmission function and any high order phase
+        beam.wave *= transmission * np.exp(1j * phase)
 
     def propagate(self, beam):
         """
@@ -1967,7 +2168,7 @@ class PPM:
         device name (e.g. IM1K4)
     FOV: float
         width of the (restricted to be square) field of view
-    N: int
+    n: int
         number of pixels across the image. Image is NxN.
     dx: float
         PPM pixel size
@@ -1976,15 +2177,6 @@ class PPM:
     blur: bool
         Blur beam intensity prior to interpolation if True, simulating blurring due to finite resolution of
         microscope. Mainly important for wavefront sensor profile monitors.
-    distort: bool
-        Distort image consistent with microscope distortion if True. Mainly important for wavefront sensor
-        profile monitors.
-    distort_level: float
-        Amount of distortion at the edge of the field of view, as a fraction (percentage/100). A positive number
-        refers to pincushion distortion, and a negative number refers to barrel distortion.
-    correction: bool
-        Correct image distortion if True. This is based on the results of pinhole calibration. Looks for calibration
-        file with the same name as the device, in the local calib directory. Does nothing if the file doesn't exist.
     view_angle_x: float
         Set viewing angle (in degrees) relative to beam propagation axis. Defined as angle from glancing incidence,
         normal incidence is 90 degrees.
@@ -2011,14 +2203,9 @@ class PPM:
         Vertical beam FWHM on PPM. Based on Gaussian fit (or calculated from second moment if fit fails).
     resolution: float
         PPM optical resolution. Used if blur is True.
-    xline: TalbotLineout object
-        See pitch module. Calculates pitch of Talbot pattern for WFS case.
-    yline: TalbotLineout object
-        See pitch module. Calcualates pitch of Talbot pattern for WFS case.
     """
 
-    def __init__(self, name, FOV=10e-3, z=None, N=2048, blur=False,
-                 view_angle_x=90, view_angle_y=90, resolution=5e-6, distort=False, correction=False, distort_level=0.0):
+    def __init__(self, name, **kwargs):
         """
         Method to initialize a PPM.
         :param name: str
@@ -2040,49 +2227,70 @@ class PPM:
             Defined as angle from glancing incidence, normal incidence is 90 degrees.
         :param resolution: float
             PPM optical resolution. Used if blur is True.
-        :param distort: bool
-            Distort image consistent with microscope distortion if True. Mainly important for wavefront sensor
-            profile monitors.
-        :param correction: bool
-        Correct image distortion if True. This is based on the results of pinhole calibration. Looks for calibration
-        file with the same name as the device, in the local calib directory. Does nothing if the file doesn't exist.
-        :param distort_level: float
-            Amount of distortion at the edge of the field of view, as a fraction (percentage/100). A positive number
-            refers to pincushion distortion, and a negative number refers to barrel distortion.
+        :param calc_phase: bool
+            whether to calculate/interpolate the phase profile at the PPM. Used with Pulse class.
         """
 
+        # set defaults
+        self.FOV = 10e-3
+        self.z = None
+        self.N = 2048
+        self.blur = False
+        self.view_angle_x = 90
+        self.view_angle_y = 90
+        self.resolution = 5e-6
+        self.calc_phase = False
+        self.threshold = 0.0
+
+        # set allowed kwargs
+        allowed_arguments = ['N', 'dx', 'FOV', 'z', 'blur', 'view_angle_x',
+                             'view_angle_y', 'resolution', 'calc_phase', 'threshold']
+        # update attributes based on kwargs
+        for key, value in kwargs.items():
+            if key in allowed_arguments:
+                setattr(self, key, value)
+
         # set some attributes
-        self.N = N
-        dx = FOV / N
-        self.dx = dx
-        self.FOV = FOV
-        self.z = z
+        # self.N = N
+        self.M = np.copy(self.N)
+        self.dx = self.FOV / self.N
+        # self.FOV = FOV
+        # self.z = z
         self.name = name
-        self.blur = blur
-        self.distort = distort
-        self.distort_level = distort_level
-        self.correction = correction
-        self.view_angle_x = view_angle_x
-        self.view_angle_y = view_angle_y
-        self.resolution = resolution
+        # self.blur = blur
+        # self.view_angle_x = view_angle_x
+        # self.view_angle_y = view_angle_y
+        # self.resolution = resolution
+        # self.calc_phase = calc_phase
 
         # calculate PPM coordinates
-        self.x = np.linspace(-N / 2, N / 2 - 1, N) * dx
+        self.x = np.linspace(-self.N / 2, self.N / 2 - 1, self.N) * self.dx
         self.y = np.copy(self.x)
 
+        # get 2D coordinate arrays
+        self.xx, self.yy = np.meshgrid(self.x, self.y)
+
         # initialize some attributes
-        self.profile = np.zeros((N, N))
-        self.x_phase = np.zeros(N)
-        self.y_phase = np.zeros(N)
-        self.x_lineout = np.zeros(N)
-        self.y_lineout = np.zeros(N)
-        self.xline = None
-        self.yline = None
-        self.cx = 0.0
-        self.cy = 0.0
-        self.wx = 0.0
-        self.wy = 0.0
+        self.profile = np.zeros((self.N, self.N))
+        self.phase = np.zeros((self.N, self.N), dtype=complex)
+        self.zx = 0
+        self.zy = 0
+        self.cx_beam = 0
+        self.cy_beam = 0
+        self.x_lineout = np.zeros(self.M)
+        self.y_lineout = np.zeros(self.N)
+        self.fit_x = np.zeros(self.M)
+        self.fit_y = np.zeros(self.N)
+        self.amp_x = 0
+        self.amp_y = 0
+        self.cx = 0
+        self.cy = 0
+        self.wx = 0
+        self.wy = 0
+        self.xbin = 1
         self.lambda0 = 0.0
+        self.centroid_is_valid = 0
+        self.wavefront_is_valid = 0
 
     def beam_analysis(self, line_x, line_y):
         """
@@ -2105,32 +2313,55 @@ class PPM:
             Calculated vertical FWHM (m) based on calculation of second moment.
         """
 
+        self.amp_x = np.max(line_x)-np.min(line_x)
+        self.amp_y = np.max(line_y)-np.min(line_y)
+
         # normalize lineouts
-        line_x = line_x / np.max(line_x)
-        line_y = line_y / np.max(line_y)
+        if np.max(line_x) > 0:
+            line_x -= np.min(line_x)
+            line_x = line_x / np.max(line_x)
+            
+        if np.max(line_y) > 0:
+            line_y -= np.min(line_y)
+            line_y = line_y / np.max(line_y)
 
         # set 20% threshold
-        thresh_x = np.max(line_x) * .2
-        thresh_y = np.max(line_y) * .2
+        thresh_x = np.max(line_x) * self.threshold
+        thresh_y = np.max(line_y) * self.threshold
         # subtract threshold and set everything below to zero
         norm_x = line_x - thresh_x
         norm_x[norm_x < 0] = 0
         # re-normalize
-        norm_x = norm_x / np.max(norm_x)
+
+        if np.max(norm_x) > 0:
+            norm_x = norm_x / np.max(norm_x)
 
         # subtract threshold and set everything below to zero
         norm_y = line_y - thresh_y
         norm_y[norm_y < 0] = 0
         # re-normalize
-        norm_y = norm_y / np.max(norm_y)
+        if np.max(norm_y) > 0:
+            norm_y = norm_y / np.max(norm_y)
 
         # calculate centroids
-        cx = np.sum(norm_x * self.x) / np.sum(norm_x)
-        cy = np.sum(norm_y * self.y) / np.sum(norm_y)
 
-        # calculate second moments. Converted to microns to help with fitting
-        sx = np.sqrt(np.sum(norm_x * (self.x - cx) ** 2) / np.sum(norm_x)) * 1e6
-        sy = np.sqrt(np.sum(norm_y * (self.y - cy) ** 2) / np.sum(norm_y)) * 1e6
+        if np.sum(norm_x) > 0:
+            cx = np.sum(norm_x * self.x) / np.sum(norm_x)
+            # calculate second moments. Converted to microns to help with fitting
+            sx = np.sqrt(np.sum(norm_x * (self.x - cx) ** 2) / np.sum(norm_x)) * 1e6
+
+        else:
+            cx = 0
+            sx = 0
+        if np.sum(norm_y) > 0:
+            cy = np.sum(norm_y * self.y) / np.sum(norm_y)
+            # calculate second moments. Converted to microns to help with fitting
+            sy = np.sqrt(np.sum(norm_y * (self.y - cy) ** 2) / np.sum(norm_y)) * 1e6
+
+        else:
+            cy = 0
+            sy = 0
+
         # conversion factor from sigma to fwhm
         fwx_guess = sx * 2.355
         fwy_guess = sy * 2.355
@@ -2138,6 +2369,8 @@ class PPM:
         # initial guess for Gaussian fit
         guessx = [cx * 1e6, sx]
         guessy = [cy * 1e6, sy]
+
+        fit_validity = 1
 
         # Gaussian fitting. Using try/except to deal with any fitting errors
         try:
@@ -2148,9 +2381,15 @@ class PPM:
             # set sx to sigma from the fit if successful.
             sx = px[1]
         except ValueError:
+            fit_validity = 0
             print('Some of the data contained NaNs or options were incompatible. Using second moment for width.')
         except RuntimeError:
+            fit_validity = 0
             print('Least squares minimization failed. Using second moment for width.')
+
+        except TypeError:
+            fit_validity = 0
+            print('Not enough points to fit. Using second moment for width.')
 
         try:
             # only fit in the region where we have signal
@@ -2160,13 +2399,26 @@ class PPM:
             # set sy to sigma from the fit if successful.
             sy = py[1]
         except ValueError:
+            fit_validity = 0
             print('Some of the data contained NaNs or options were incompatible. Using second moment for width.')
         except RuntimeError:
+            fit_validity = 0
             print('Least squares minimization failed. Using second moment for width.')
+
+        except TypeError:
+            fit_validity = 0
+            print('Not enough points to fit. Using second moment for width.')
 
         # conversion factor from sigma to FWHM. Also convert back to meters.
         fwhm_x = sx * 2.355 / 1e6
         fwhm_y = sy * 2.355 / 1e6
+
+        # check validity
+        validity = ((self.amp_x > 0) and (self.amp_y > 0) and fit_validity and
+                    (fwhm_x < np.max(self.x)/2) and (fwhm_y < np.max(self.y)/2)
+                    and fwhm_x > self.dx*5 and fwhm_y > self.dx*5)
+
+        self.centroid_is_valid = validity
 
         return cx, cy, fwhm_x, fwhm_y, fwx_guess, fwy_guess
 
@@ -2179,8 +2431,7 @@ class PPM:
         """
 
         # Calculate intensity from complex beam
-        profilex = np.abs(beam.wavex) ** 2
-        profiley = np.abs(beam.wavey) ** 2
+        profile = np.abs(beam.wave) ** 2
 
         # coordinate scaling due to off-axis viewing angle
         scaling_x = 1 / np.sin(self.view_angle_x * np.pi / 180)
@@ -2192,72 +2443,53 @@ class PPM:
             x_width = self.resolution / beam.dx
             y_width = self.resolution / beam.dy
             # apply blurring using ndimage gaussian_filter
-            profilex = ndimage.filters.gaussian_filter1d(profilex, x_width, mode='constant')
-            profiley = ndimage.filters.gaussian_filter1d(profiley, y_width, mode='constant')
+            profile = ndimage.filters.gaussian_filter(profile, sigma=(y_width, x_width))
 
         # get beam coordinates for interpolation
-        x = beam.x
-        y = beam.y
+        x = beam.x[0, :]
+        y = beam.y[:, 0]
 
-        # interpolating function from np.interp (allowing for flipped coordinates)
-        profilex_interp = Util.interp_flip(self.x, x * scaling_x, profilex)
-        profiley_interp = Util.interp_flip(self.y, y * scaling_y, profiley)
+        x_sign = 1
+        y_sign = 1
+        if x[1]-x[0] < 0:
+            x_sign = -1
+        if y[1]-y[0] < 0:
+            y_sign = -1
 
-        x_phase = np.unwrap(np.angle(beam.wavex))
-        y_phase = np.unwrap(np.angle(beam.wavey))
+        # interpolating function from Scipy's interp2d. Extrapolation value is set to zero.
+        #f = interpolation.interp2d(x * scaling_x, y * scaling_y, profile, fill_value=0)
+        f = interpolation.RectBivariateSpline(x_sign * x * scaling_x, y_sign * y * scaling_y, profile)
+        # do the interpolation to get the profile we'll see on the PPM
+        self.profile = f(x_sign*self.xx, y_sign*self.yy,grid=False)
 
-        # get beam coordinates
-        x = beam.x
-        y = beam.y
+        if self.calc_phase:
+            phase = unwrap_phase(np.angle(beam.wave))
+            #f_phase = interpolation.interp2d(x * scaling_x, y * scaling_y, phase, fill_value=0)
+            f_phase = interpolation.RectBivariateSpline(x_sign*x * scaling_x, y_sign*y * scaling_y, phase)
 
-        # interpolating function from np.interp (allowing for flipped coordinates)
-        self.x_phase = Util.interp_flip(self.x, x * scaling_x, x_phase)
-        self.y_phase = Util.interp_flip(self.y, y * scaling_y, y_phase)
+            self.phase = f_phase(x_sign*self.xx, y_sign*self.yy,grid=False)
 
-        # add linear phase (centered on beam)
-        self.x_phase += 2 * np.pi / beam.lambda0 * beam.ax * (self.x - beam.cx)
-        self.y_phase += 2 * np.pi / beam.lambda0 * beam.ay * (self.y - beam.cy)
-
-        # multiply two dimensions together to get the 2d profile
-        self.profile = np.reshape(profiley_interp, (self.N, 1)) * np.reshape(profilex_interp, (1, self.N))
+            if not beam.focused_x:
+                # self.phase += np.pi / beam.lambda0 / beam.zx * (self.xx - beam.cx)**2
+                self.zx = beam.zx
+                self.cx_beam = beam.cx
+            if not beam.focused_y:
+                # self.phase += np.pi / beam.lambda0 / beam.zy * (self.yy - beam.cy)**2
+                self.zy = beam.zy
+                self.cy_beam = beam.cy
+            self.phase += 2 * np.pi / beam.lambda0 * beam.ax * (self.xx - beam.cx)
+            self.phase += 2 * np.pi / beam.lambda0 * beam.ay * (self.yy - beam.cy)
 
         # calculate horizontal lineout
         self.x_lineout = np.sum(self.profile, axis=0)
-        # # calculate vertical lineout
+        # calculate vertical lineout
         self.y_lineout = np.sum(self.profile, axis=1)
-
-        # calculate centroids and beam widths
-        self.cx, self.cy, self.wx, self.wy, wx2, xy2 = self.beam_analysis(self.x_lineout, self.y_lineout)
 
         # get beam wavelength
         self.lambda0 = beam.lambda0
 
-        # distortion of image, for simulating distortion effect for wavefront sensor
-        if self.distort:
-            # K is the distortion parameter. Distorted coordinates x_d are defined as x_d = x_u * (1 + K * r^2), where
-
-            # try map_coordinates. This seems to work and is quite a bit faster than RectBivariateSpline
-            K = self.distort_level/(self.N/2)**2
-            x1 = np.linspace(0, self.N - 1, self.N)
-            y1 = np.linspace(0, self.N - 1, self.N)
-            x1, y1 = np.meshgrid(x1, y1)
-            # these are the undistorted coordinates
-            x1 = (x1 - np.mean(x1)) * (1 - K * ((x1-np.mean(x1))**2 + (y1-np.mean(y1))**2)) + np.mean(x1)
-            y1 = (y1 - np.mean(y1)) * (1 - K * ((x1 - np.mean(x1)) ** 2 + (y1 - np.mean(y1)) ** 2)) + np.mean(y1)
-
-            # apply the distortion
-            self.profile = np.reshape(ndimage.map_coordinates(self.profile, [y1.flatten(), x1.flatten()], order=3),
-                                      (self.N, self.N))
-
-        # distortion correction, from pinhole calibration
-        if self.correction:
-            # check if calibration file exists
-            try:
-                filename = 'calib/%s.npz' % self.name
-                calib_data = np.load(filename)
-                
-            except IOError:
-                print('%s is not calibrated' % self.name)
+        # calculate centroids and beam widths
+        self.cx, self.cy, self.wx, self.wy, wx2, xy2 = self.beam_analysis(self.x_lineout, self.y_lineout)
 
     def propagate(self, beam):
         """
@@ -2267,147 +2499,6 @@ class PPM:
         :return: None
         """
         self.calc_profile(beam)
-
-    def view_beam(self):
-        """
-        Method to view beam after the fact. Will be zero intensity everywhere if calc_profile (or propagate)
-        haven't been called yet.
-        :return axes_handles: list of matplotlib axes handles
-            Handles to the axes in the generated figure. Listed in the following order [profile,x_lineout,y_lineout].
-        """
-
-        # minima and maxima of the field of view (in microns) for imshow extent
-        minx = np.round(np.min(self.x) * 1e6)
-        maxx = np.round(np.max(self.x) * 1e6)
-        miny = np.round(np.min(self.y) * 1e6)
-        maxy = np.round(np.max(self.y) * 1e6)
-
-        # generate the figure
-        plt.figure(figsize=(8, 8))
-
-        # generate the axes, in a grid
-        ax_profile = plt.subplot2grid((4, 4), (0, 0), colspan=3, rowspan=3)
-        ax_y = plt.subplot2grid((4, 4), (0, 3), rowspan=3)
-        ax_x = plt.subplot2grid((4, 4), (3, 0), colspan=3)
-
-        # show the image, with positive y at the top of the figure
-        ax_profile.imshow(np.flipud(self.profile), extent=(minx, maxx, miny, maxy), cmap=plt.get_cmap('gnuplot'))
-        # label coordinates
-        ax_profile.set_xlabel('X coordinates (microns)')
-        ax_profile.set_ylabel('Y coordinates (microns)')
-        ax_profile.set_title(self.name)
-
-        # show the vertical lineout (distance in microns)
-        ax_y.plot(self.y_lineout/np.max(self.y_lineout), self.y * 1e6)
-        # also plot the Gaussian fit
-        ax_y.plot(np.exp(-(self.y - self.cy) ** 2 / 2 / (self.wy / 2.355) ** 2), self.y * 1e6)
-        # show a grid
-        ax_y.grid(True)
-        # set limits
-        ax_y.set_xlim(0, 1.05)
-
-        # show the horizontal lineout (distance in microns)
-        ax_x.plot(self.x * 1e6, self.x_lineout/np.max(self.x_lineout))
-        # also plot the Gaussian fit
-        ax_x.plot(self.x * 1e6, np.exp(-(self.x - self.cx) ** 2 / 2 / (self.wx / 2.355) ** 2))
-        # show a grid
-        ax_x.grid(True)
-        # set limits
-        ax_x.set_ylim(0, 1.05)
-
-        # add some annotations with beam centroid and FWHM
-        ax_y.text(.6, .1 * np.max(self.y * 1e6), 'centroid: %.2f microns' % (self.cy * 1e6), rotation=-90)
-        ax_y.text(.3, .1 * np.max(self.y * 1e6), 'width: %.2f microns' % (self.wy * 1e6), rotation=-90)
-        ax_x.text(-.9 * np.max(self.x * 1e6), .6, 'centroid: %.2f microns' % (self.cx * 1e6))
-        ax_x.text(-.9 * np.max(self.x * 1e6), .3, 'width: %.2f microns' % (self.wx * 1e6))
-
-        # tight layout to make sure we're not cutting out anything
-        plt.tight_layout()
-
-        # bundle handles in a list
-        axes_handles = [ax_profile, ax_x, ax_y]
-
-        return axes_handles
-
-    def get_x(self):
-        """
-        Returns x
-        :return x: (N,) ndarray
-            horizontal coordinates for PPM
-        """
-        return self.x
-
-    def get_y(self):
-        """
-        Returns y
-        :return y: (N,) ndarray
-            vertical coordinates for PPM
-        """
-        return self.y
-
-    def get_x_centroid(self):
-        """
-        Return calculated centroid
-        :return cx: float
-             Horizontal centroid
-        """
-        return self.cx
-
-    def get_y_centroid(self):
-        """
-        Return calculated centroid
-        :return cy: float
-            Vertical centroid
-        """
-        return self.cy
-
-    def get_x_width(self):
-        """
-        Return calculated horizontal FWHM
-        :return wx: float
-            Horizontal FWHM
-        """
-        return self.wx
-
-    def get_y_width(self):
-        """
-        Return calculated vertical FWHM
-        :return wy: float
-            Vertical FWHM
-        """
-        return self.wy
-
-    def get_profile_x(self):
-        """
-        Return horizontal lineout
-        :return x_lineout: (N,) ndarray
-            Horizontal lineout
-        """
-        return self.x_lineout
-
-    def get_profile_y(self):
-        """
-        Return vertical lineout
-        :return y_lineout: (N,) ndarray
-            Vertical lineout
-        """
-        return self.y_lineout
-
-    def get_2d_profile(self):
-        """
-        Return 2D profile
-        :return profile: (N,N) ndarray
-            2D beam profile at PPM
-        """
-        return self.profile
-
-    def get_FOV(self):
-        """
-        Return PPM field of view
-        :return FOV: float
-            Width of square field of view
-        """
-        return self.FOV
 
     def retrieve_wavefront(self, wfs):
         """
@@ -2435,7 +2526,7 @@ class PPM:
                 Distance to vertical focus
         """
 
-        print('retrieving wavefront')
+        # print('retrieving wavefront')
 
         # get Talbot fraction that we're using (fractional Talbot effect)
         fraction = wfs.fraction
@@ -2454,14 +2545,14 @@ class PPM:
         y_lim = int(self.wy/self.dx)
 
         # calculated beam center in pixels
-        x_center = int(self.cx/self.dx) + self.N/2
-        y_center = int(self.cy/self.dx) + self.N/2
+        x_center = Util.coordinate_to_pixel(self.cx, self.dx, self.M)
+        y_center = Util.coordinate_to_pixel(self.cy, self.dx, self.N)
 
         # get lineouts from 2d profile
-        lineout_x = np.sum(self.profile[int(y_center - lineout_width / 2):int(y_center + lineout_width / 2),
-                           int(x_center - x_lim):int(x_center+x_lim)], axis=0)
-        lineout_y = np.sum(self.profile[int(y_center-y_lim):int(y_center+y_lim),
-                           int(x_center - lineout_width / 2):int(x_center + lineout_width / 2)], axis=1)
+        lineout_x = Util.get_horizontal_lineout(self.profile, x_center=x_center, y_center=y_center,
+                                                half_length=x_lim, half_width=lineout_width / 2)
+        lineout_y = Util.get_vertical_lineout(self.profile, x_center=x_center, y_center=y_center,
+                                              half_length=y_lim, half_width=lineout_width / 2)
 
         # expected spatial frequency of Talbot pattern (1/m)
         peak = 1. / mag / wfs.pitch * fraction
@@ -2470,40 +2561,46 @@ class PPM:
         fc = peak * self.dx
 
         # calculate pitch from lineouts. See pitch module.
-        print('getting lineouts')
-        self.xline = TalbotLineout(lineout_x, fc, fraction, pad=True)
-        self.yline = TalbotLineout(lineout_y, fc, fraction, pad=True)
+        # print('getting lineouts')
+        xline = TalbotLineout(lineout_x, fc, fraction, pad=True)
+        yline = TalbotLineout(lineout_y, fc, fraction, pad=True)
 
         # parameters for calculating Legendre coefficients
-        param = {
+        wfs_param = {
                 "dg": wfs.pitch,  # wavefront sensor pitch (m)
                 "fraction": fraction,  # wavefront sensor fraction
-                "dx": self.dx,  # PPM pixel size
+                "dx": self.dx*self.xbin,  # PPM pixel size
                 "zT": zT,  # distance between WFS and PPM
-                "lambda0": self.lambda0  # beam wavelength
+                "lambda0": self.lambda0,  # beam wavelength
+                "fc": fc  # spatial frequency of expected peak (1/pixels)
                 }
 
         # calculate Legendre coefficients
-        print('getting Legendre coefficients')
-        z_x, coeff_x, x_prime, x_res = self.xline.get_legendre(param)
-        z_y, coeff_y, y_prime, y_res = self.yline.get_legendre(param)
-        print('found Legendre coefficients')
+        # print('getting Legendre coefficients')
+        wfs_param['dg'] = wfs.x_pitch_sim
+        z_x, coeff_x, x_prime, x_res, fit_object = xline.get_legendre(wfs_param)
+        wfs_param['dg'] = wfs.y_pitch_sim
+        z_y, coeff_y, y_prime, y_res, fit_object = yline.get_legendre(wfs_param)
+        # print('found Legendre coefficients')
 
         # pixel size for retrieved wavefront
         dx_prime = x_prime[1] - x_prime[0]
         dy_prime = y_prime[1] - y_prime[0]
 
         # re-center residual phase coordinates on beam center
-        x_prime += (x_center-self.N/2) * dx_prime
+        x_prime += (x_center-self.M/2) * dx_prime
         y_prime += (y_center-self.N/2) * dy_prime
 
         # convert coordinates to microns
         x_prime = x_prime * 1e6
         y_prime = y_prime * 1e6
 
+        rms_x = np.std(x_res)
+        rms_y = np.std(y_res)
+
         # print calculated distance to focus
-        print('Distance to source: '+str(z_x))
-        print('Distance to source: '+str(z_y))
+        # print('Distance to source: '+str(z_x))
+        # print('Distance to source: '+str(z_y))
 
         # output. See method docstring for descriptions.
         wfs_data = {
@@ -2513,21 +2610,1085 @@ class PPM:
                 'y_prime': y_prime,
                 'coeff_x': coeff_x,
                 'coeff_y': coeff_y,
-                'z2x': z_x,
-                'z2y': z_y
+                'z_x': z_x,
+                'z_y': z_y
                 }
+
+        return wfs_data, wfs_param
+
+    def retrieve_wavefront2D(self, basis_file, wfs, threshold=0.01):
+        """
+        Method to calculate wavefront in the case where there is a wavefront sensor upstream of the PPM.
+        :param basis_file: string
+            Path to file containing pickled Legendre basis object.
+        :param wfs: WFS object
+            Grating structure that generates Talbot interferometry patterns. Passed to this method to gain access
+            to its attributes.
+        :param threshold: float
+            Optional, controls how much to threshold the intensity when recovering the wavefront
+        :return wfs_data: dict
+            Includes the following entries
+            x_prime: (M,) ndarray
+                Horizontal coordinates for retrieved high-order phase
+            y_prime: (N,) ndarray
+                Vertical coordinates for retrieved high-order phase
+            x_res: (M,) ndarray
+                Horizontal residual phase (>2nd order) at points in x_prime
+            y_res: (N,) ndarray
+                Vertical residual phase (>2nd order) at points in y_prime
+            coeff_x: (k,) ndarray
+                Legendre coefficients for horizontal phase lineout
+            coeff_y: (k,) ndarray
+                Legendre coefficients for vertical phase lineout
+            z2x: float
+                Distance to horizontal focus
+            z2y: float
+                Distance to vertical focus
+        """
+
+        print('retrieving wavefront')
+
+        # go ahead and retrieve 1D wavefront first
+        wfs_data, wfs_param = self.retrieve_wavefront(wfs)
+
+        # get Talbot fraction that we're using (fractional Talbot effect)
+        fraction = wfs.fraction
+
+        # Talbot image processing
+        # load basis
+        with open(basis_file, 'rb') as f:
+            fit_object = pickle.load(f)
+
+        # initialize Talbot image processing
+        image_calc = TalbotImage(self.profile, wfs_param['fc'], fraction)
+
+        # add parameters for calculating Legendre coefficients
+        wfs_param['downsample'] = 3
+        wfs_param['zf'] = wfs.f0
+        wfs_param['dg'] = wfs.x_pitch_sim
+
+        # calculate 2D legendre coefficients
+        print('getting 2D Legendre coefficients')
+        recovered_beam, fit_params = image_calc.get_legendre(fit_object, wfs_param, threshold=threshold)
+
+        # get complete wavefront with defocus
+        x = fit_params['x']
+        y = fit_params['y']
+        px = fit_params['px']
+        py = fit_params['py']
+        coeff = fit_params['coeff']
+
+        # add defocus to wavefront fit
+        full_wave = fit_object.wavefront_fit(coeff) + px * x**2 + py * y**2
+
+        # output. See method docstring for descriptions.
+        wfs_data2D = {
+                'recovered': recovered_beam,
+                'wave': full_wave
+                }
+
+        wfs_data.update(fit_params)
+
+        wfs_data.update(wfs_data2D)
 
         return wfs_data
 
+    def add_complex_profile(self, beam, zx_ref=None, zy_ref=None):
+
+        if zx_ref is None:
+            zx_ref = np.inf
+        if zy_ref is None:
+            zy_ref = np.inf
+
+        beam_amp = np.abs(beam.wave)
+        beam_phase = np.angle(beam.wave)
+
+        # get beam coordinates for interpolation
+        x = beam.x[0, :]
+        y = beam.y[:, 0]
+        # interpolating function from Scipy's interp2d. Extrapolation value is set to zero.
+        f_amp = interpolation.interp2d(x, y, beam_amp, fill_value=0)
+        f_phase = interpolation.interp2d(x, y, beam_phase, fill_value=0)
+
+        # do the interpolation to get the profile we'll see on the PPM
+        amp_interp = f_amp(self.x, self.y)
+        phase_interp = f_phase(self.x, self.y)
+
+        # add linear phase (centered on beam)
+        phase_interp += 2*np.pi/beam.lambda0 * (beam.ax * self.xx + beam.ay * self.yy)
+
+        # add quadratic phase (centered on beam)
+        phase_interp += np.pi/beam.lambda0 * (self.xx**2*(1/beam.zx - 1/zx_ref)
+                                              + self.yy**2 * (1/beam.zy - 1/zy_ref))
+
+        # figure out quadratic phase later
+        complex_profile_add = amp_interp * np.exp(1j*phase_interp)
+
+        # add to current complex profile
+        self.complex_profile += complex_profile_add
+
+        # update profile
+        self.profile = np.abs(self.complex_profile)**2
+
+        # calculate horizontal lineout
+        self.x_lineout = np.sum(self.profile, axis=0)
+        # calculate vertical lineout
+        self.y_lineout = np.sum(self.profile, axis=1)
+
+        # calculate centroids and beam widths
+        self.cx, self.cy, self.wx, self.wy, wx2, xy2 = self.beam_analysis(self.x_lineout, self.y_lineout)
+
+    def add_profile(self, profile):
+        self.profile += profile
+        # calculate horizontal lineout
+        self.x_lineout = np.sum(self.profile, axis=0)
+        # calculate vertical lineout
+        self.y_lineout = np.sum(self.profile, axis=1)
+
+        # calculate centroids and beam widths
+        self.cx, self.cy, self.wx, self.wy, wx2, xy2 = self.beam_analysis(self.x_lineout, self.y_lineout)
+
+    def view_horizontal(self, ax=None, normalized=True, log=False, show_fit=True, legend=False, label='Lineout'):
+        """
+        Method to view
+        :param normalized: whether to normalize the lineout
+        :return:
+        """
+
+        gaussian_fit = np.exp(-(self.x - self.cx) ** 2 / 2 / (self.wx / 2.355) ** 2)
+
+        if ax is None:
+            # generate the figure
+            plt.figure()
+            ax = plt.subplot2grid((1,1), (0, 0))
+        if normalized:
+            # show the vertical lineout (distance in microns)
+            if log:
+                ax.semilogy(self.x * 1e6, self.x_lineout / np.max(self.x_lineout), label=label)
+            else:
+                ax.plot(self.x * 1e6, self.x_lineout / np.max(self.x_lineout), label=label)
+                ax.set_ylim(0, 1.05)
+            ax.set_ylabel('Intensity (normalized)')
+        else:
+            # show the vertical lineout (distance in microns)
+            if log:
+                ax.semilogy(self.x * 1e6, self.x_lineout, label=label)
+            else:
+                ax.plot(self.x * 1e6, self.x_lineout, label=label)
+            gaussian_fit *= np.max(self.x_lineout)
+            ax.set_ylabel('Intensity (arbitrary units)')
+        # also plot the Gaussian fit
+        if show_fit:
+            if log:
+                ax.semilogy(self.x*1e6, gaussian_fit, label='fit')
+            else:
+                ax.plot(self.x * 1e6, gaussian_fit, label='fit')
+        if legend:
+            ax.legend()
+        ax.set_xlabel('X Coordinates (\u03BCm)')
+        # show a grid
+        ax.grid(True)
+        # set limits
+
+
+        return ax
+
+    def view_vertical(self, ax_y=None, normalized=True, log=False, show_fit=True, legend=False, label='Lineout'):
+        """
+        Method to view
+        :param normalized: whether to normalize the lineout
+        :return:
+        """
+
+        gaussian_fit = np.exp(-(self.y - self.cy) ** 2 / 2 / (self.wy / 2.355) ** 2)
+
+        if ax_y is None:
+            # generate the figure
+            plt.figure()
+            ax_y = plt.subplot2grid((1,1), (0, 0))
+        if normalized:
+            # show the vertical lineout (distance in microns)
+            if log:
+                ax_y.semilogy(self.y * 1e6, self.y_lineout / np.max(self.y_lineout), label=label)
+            else:
+                ax_y.plot(self.y * 1e6, self.y_lineout / np.max(self.y_lineout), label=label)
+                ax_y.set_ylim(0, 1.05)
+            ax_y.set_ylabel('Intensity (normalized)')
+        else:
+            # show the vertical lineout (distance in microns)
+            if log:
+                ax_y.semilogy(self.y * 1e6, self.y_lineout, label=label)
+            else:
+                ax_y.plot(self.y * 1e6, self.y_lineout, label=label)
+            gaussian_fit *= np.max(self.y_lineout)
+            ax_y.set_ylabel('Intensity (arbitrary units)')
+        # also plot the Gaussian fit
+        if show_fit:
+            if log:
+                ax_y.semilogy(self.y*1e6, gaussian_fit, label='fit')
+            else:
+                ax_y.plot(self.y * 1e6, gaussian_fit, label='fit')
+        if legend:
+            ax_y.legend()
+        ax_y.set_xlabel('Y Coordinates (\u03BCm)')
+        # show a grid
+        ax_y.grid(True)
+        # set limits
+
+
+        return ax_y
+
+    def view_beam(self):
+        """
+        Method to view beam after the fact. Will be zero intensity everywhere if calc_profile (or propagate)
+        haven't been called yet.
+        :return axes_handles: list of matplotlib axes handles
+            Handles to the axes in the generated figure. Listed in the following order [profile,x_lineout,y_lineout].
+        """
+
+        # minima and maxima of the field of view (in microns) for imshow extent
+        minx = np.round(np.min(self.x) * 1e6)
+        maxx = np.round(np.max(self.x) * 1e6)
+        miny = np.round(np.min(self.y) * 1e6)
+        maxy = np.round(np.max(self.y) * 1e6)
+
+        units = 'microns'
+        mult = 1e6
+
+        all_extrema = np.array([minx,maxx,miny,maxy])
+        min_extrema = np.min(np.abs(all_extrema))
+        if min_extrema<1:
+            minx = np.round(np.min(self.x) * 1e9)
+            maxx = np.round(np.max(self.x) * 1e9)
+            miny = np.round(np.min(self.y) * 1e9)
+            maxy = np.round(np.max(self.y) * 1e9)
+            units = 'nm'
+            mult = 1e9
+
+        # generate the figure
+        plt.figure(figsize=(8, 8))
+
+        # generate the axes, in a grid
+        ax_profile = plt.subplot2grid((4, 4), (0, 0), colspan=3, rowspan=3)
+        ax_y = plt.subplot2grid((4, 4), (0, 3), rowspan=3)
+        ax_x = plt.subplot2grid((4, 4), (3, 0), colspan=3)
+
+        # show the image, with positive y at the top of the figure
+        ax_profile.imshow(np.flipud(self.profile), extent=(minx, maxx, miny, maxy), cmap=plt.get_cmap('gnuplot'))
+        # label coordinates
+        ax_profile.set_xlabel('X coordinates (%s)' % units)
+        ax_profile.set_ylabel('Y coordinates (%s)' % units)
+        ax_profile.set_title(self.name)
+
+        # show the vertical lineout (distance in microns)
+        ax_y.plot(self.y_lineout/np.max(self.y_lineout), self.y * mult)
+        # also plot the Gaussian fit
+        ax_y.plot(np.exp(-(self.y - self.cy) ** 2 / 2 / (self.wy / 2.355) ** 2), self.y * mult)
+        # show a grid
+        ax_y.grid(True)
+        # set limits
+        ax_y.set_xlim(0, 1.05)
+
+        # show the horizontal lineout (distance in microns)
+        ax_x.plot(self.x * mult, self.x_lineout/np.max(self.x_lineout))
+        # also plot the Gaussian fit
+        ax_x.plot(self.x * mult, np.exp(-(self.x - self.cx) ** 2 / 2 / (self.wx / 2.355) ** 2))
+        # show a grid
+        ax_x.grid(True)
+        # set limits
+        ax_x.set_ylim(0, 1.05)
+
+        # add some annotations with beam centroid and FWHM
+        ax_y.text(.6, .1 * np.max(self.y * mult), 'centroid: %.2f %s' % (self.cy * mult, units), rotation=-90)
+        ax_y.text(.3, .1 * np.max(self.y * mult), 'width: %.2f %s' % (self.wy * mult, units), rotation=-90)
+        ax_x.text(-.9 * np.max(self.x * mult), .6, 'centroid: %.2f %s' % (self.cx * mult, units))
+        ax_x.text(-.9 * np.max(self.x * mult), .3, 'width: %.2f %s' % (self.wx * mult, units))
+
+        # tight layout to make sure we're not cutting out anything
+        plt.tight_layout()
+
+        # bundle handles in a list
+        axes_handles = [ax_profile, ax_x, ax_y]
+
+        return axes_handles
+
     def complex_beam(self):
+        if self.calc_phase:
+            # reshape into 2 dimensional representation
+            complex_beam = np.sqrt(self.profile) * np.exp(1j*self.phase)
+        else:
+            complex_beam = np.sqrt(self.profile)
+        return complex_beam, self.zx, self.zy, self.cx_beam, self.cy_beam
 
-        # multiply two dimensions together to get the 2d profile
-        phase_2D = np.reshape(np.exp(1j*self.y_phase), (self.N, 1)) * np.reshape(np.exp(1j*self.x_phase), (1, self.N))
 
-        # reshape into 2 dimensional representation
-        complex_beam = np.sqrt(self.profile) * phase_2D
+class PPM_Device(PPM):
+    """
+    Child class of PPM that is used for a physical PPM, rather than simulated.
+    """
+    def __init__(self, imager_dict, **kwargs):
+        self.imager_prefix = imager_dict['prefix']
+        super().__init__(self.imager_prefix, **kwargs)
 
-        return complex_beam
+        #self.imager_prefix = name
+        self.threshold = 0.0001
+        self.roi = None 
+
+        # set allowed kwargs
+        allowed_arguments = ['average','threshold','fit_object','roi']
+
+        # update attributes based on kwargs
+        for key, value in kwargs.items():
+            if key in allowed_arguments:
+                setattr(self, key, value)
+
+        # get Y motor state
+        if 'IM' in self.imager_prefix:
+            self.state = EpicsSignalRO(self.imager_prefix+'MMS:STATE:GET_RBV')
+        else:
+            self.state = EpicsSignalRO(imager_dict['motor']+'PIM.VAL')
+        # define possible states depending on imager type
+        if 'XTES' in self.imager_prefix:
+            self.states_list = ['Unknown', 'OUT', 'YAG', 'DIAMOND', 'RETICLE']
+        elif 'PPM' in self.imager_prefix:
+            self.states_list = ['Unknown', 'OUT', 'POWERMETER', 'YAG1', 'YAG2']
+        else:
+            self.states_list = ['Unknown','DIODE','YAG','OUT']
+
+        if 'L2' in self.imager_prefix:
+            self.cam_name = self.imager_prefix + 'CAM:01:'
+        elif 'IM' in self.imager_prefix:
+            self.cam_name = self.imager_prefix + 'CAM:'
+        else:
+            self.cam_name = self.imager_prefix
+        
+        if 'MONO' in self.imager_prefix:
+            self.cam_name = self.imager_prefix
+        self.epics_name = self.cam_name + 'IMAGE1:'
+        # get acquisition info (this is in seconds)
+        self.acquisition_period = PV(self.epics_name[:-7] + 'AcquirePeriod_RBV').get()
+
+        # check if Image3 is available
+        port = PV(self.epics_name + 'PortName_RBV').get()
+        array_rate = PV(self.epics_name + 'ROI:EnableCallbacks').get()
+
+        if port is None or array_rate==0:
+            self.epics_name = self.cam_name + 'IMAGE1:'
+            self.acquisition_period = PV(self.cam_name + 'AcquirePeriod_RBV').get()
+
+        port = PV(self.epics_name + 'PortName_RBV').get()
+
+        array_rate = PV(self.epics_name + 'ROI:EnableCallbacks').get()
+
+
+        if port is None or array_rate==0:
+            self.epics_name = self.cam_name + 'IMAGE2:'
+            self.acquisition_period = PV(self.cam_name + 'AcquirePeriod_RBV').get()
+
+        port = PV(self.epics_name + 'PortName_RBV').get()
+
+        if port is None:
+            self.epics_name = self.imager_prefix + 'IMAGE1:'
+            self.acquisition_period = PV(self.imager_prefix + 'AcquirePeriod_RBV').get()
+       
+        if 'IM' in self.cam_name: 
+            self.x_bm_ctr = PV(self.cam_name + 'X_BM_CTR')
+            self.y_bm_ctr = PV(self.cam_name + 'Y_BM_CTR')
+        else:
+            self.x_bm_ctr = PV(self.imager_prefix + 'X_BM_CTR')
+            self.y_bm_ctr = PV(self.imager_prefix + 'Y_BM_CTR')
+
+        self.orientation = 'action0'
+
+        print(self.epics_name)
+
+
+        FOV_dict = {
+            'IM2K4': 8.5,
+            'IM3K4': 8.5,
+            'IM4K4': 5.0,
+            'IM5K4': 8.5,
+            'IM6K4': 8.5,
+            'IM1K1': 8.5,
+            'IM2K1': 8.5,
+            'IM1K2': 8.5,
+            'IM2K2': 18.5,
+            'IM3K2': 18.5,
+            'IM4K2': 8.5,
+            'IM5K2': 8.5,
+            'IM6K2': 5.0,
+            'IM7K2': 5.0,
+            'IM1L1': 8.5,
+            'IM2L1': 8.5,
+            'IM3L1': 8.5,
+            'IM4L1': 8.5,
+            'IM1L2': 2.0,
+            'IM2L2': 5.0,
+            'IM1K3': 8.5,
+            'IM2K3': 8.5,
+            'IM3K3': 8.5,
+            'IM3L0': 5.0
+        }
+
+        z_dict = {
+            'IM1L0': 699.5576832,
+            'IM2L0': 736.50848,
+            'IM3L0': 746.0000167,
+            'IM4L0': 753.5587416,
+            'IM1K0': 699.4677942,
+            'IM2K0': 732.3403281,
+            'IM1K1': 738.0279162,
+            'IM2K1': 742.15,
+            'IM1K2': 777.93,
+            'IM2K2': 780.425,
+            'IM3K2': 781.9,
+            'IM4K2': 783.455,
+            'IM5K2': 787.417,
+            'IM6K2': 792.8188-.03,
+            'IM7K2': 798.5,
+            'IM1L1': 745.4046250,
+            'IM2L1': 759.02,
+            'IM3L1': 778.96,
+            'IM4L1': 778.96,
+            'IM1L2': 787.73,
+            'IM2L2': 799.642,
+            'IM1K3': 740.804,
+            'IM2K3': 750,
+            'IM3K3': 778.66,
+            'IM2K4': 755.32096,
+            'IM3K4': 758.889,
+            'IM4K4': 761.101,
+            'IM5K4': 764.313
+            #'IM5K4': 764.45591 - 0.03
+        }
+
+        try:
+            self.distance = FOV_dict[self.epics_name[0:5]] * 1e3
+            self.z = z_dict[self.epics_name[0:5]]
+        except:
+            self.distance = 8500.0
+            self.z = z_dict['IM1L0']
+
+
+        try:
+            self.gige = PCDSAreaDetector(self.cam_name, name='gige')
+            self.reset_camera()
+        except Exception:
+            print('\nSomething wrong with camera server')
+            self.gige = None
+
+        ## load in pixel size
+        #try:
+        #    with open('/cds/home/s/seaberg/Commissioning_Tools/PPM_centroid/imagers.db') as json_file:
+        #        data = json.load(json_file)
+        #   
+        #    key_name = self.epics_name[0:5]
+        #    if 'MONO' in self.epics_name:
+        #        if '3' in self.epics_name:
+        #            key_name = 'MONO_03'
+        #        elif '4' in self.epics_name:
+        #            key_name = 'MONO_04'
+
+        #    imager_data = data[key_name]
+        #    #imager_data = data[self.epics_name[0:5]]
+        #    self.dx = float(imager_data['pixel'])
+        #    self.z = float(imager_data['z'])
+
+        #    try:
+        #        self.cx_target = float(imager_data['cx'])
+        #        self.cy_target = float(imager_data['cy'])
+        #    except KeyError:
+        #        self.cx_target = 0
+        #        self.cy_target = 0
+
+        self.dx = 1.0
+        self.cx_target = 0.0
+        self.cy_target = 0.0
+
+        dx = PV(self.cam_name + 'RESOLUTION').get()
+        if dx is not None:
+            self.dx = dx
+        else:
+            print('pixel size is not calibrated')
+        cx_target = PV(self.cam_name + 'X_RTCL_CTR').get()
+        if cx_target is not None:
+            self.cx_target = cx_target
+        cy_target = PV(self.cam_name + 'Y_RTCL_CTR').get()
+        if cy_target is not None:
+            self.cy_target = cy_target
+
+        print('{} um pixel'.format(self.dx))
+
+        # if len(sys.argv)>1:
+        #     self.cam_name = sys.argv[1]
+        #     self.epics_name = sys.argv[1] + 'IMAGE2:'
+
+        #if 'XTES' in self.imager_prefix or 'PPM' in self.imager_prefix:
+        #    PV(self.epics_name + 'ROI:Scale').put(1)
+        #    PV(self.epics_name + 'ROI:BinX').put(1)
+        #    PV(self.epics_name + 'ROI:BinY').put(1)
+        #    PV(self.cam_name + 'DataType').put('UInt16')
+
+        self.image_pv = PV(self.epics_name + 'ArrayData')
+
+        # get ROI info
+        #xmin = PV(self.epics_name + 'ROI:MinX_RBV').get()
+        xmin = 0
+        xmax = xmin + PV(self.epics_name + 'ROI:SizeX_RBV').get() - 1
+        #ymin = PV(self.epics_name + 'ROI:MinY_RBV').get()
+        ymin = 0
+        ymax = ymin + PV(self.epics_name + 'ROI:SizeY_RBV').get() - 1
+        # get binning
+        self.xbin = PV(self.epics_name + 'ROI:BinX_RBV').get()
+        self.ybin = PV(self.epics_name + 'ROI:BinY_RBV').get()
+
+        # get array size
+        self.xsize = PV(self.epics_name + 'ROI:ArraySizeX_RBV').get()
+        self.ysize = PV(self.epics_name + 'ROI:ArraySizeY_RBV').get()
+
+        # pixel size in meters, per pixel so need to take binning into account
+        self.dxm = self.dx * 1e-6 * self.xbin
+
+        print(self.xsize)
+        if self.xsize == 0:
+            self.xsize = PV(self.epics_name + 'ArraySize0_RBV').get()
+            self.ysize = PV(self.epics_name + 'ArraySize1_RBV').get()
+            xmin = 0
+            ymin = 0
+            xmax = self.xsize - 1
+            ymax = self.ysize - 1
+
+        #self.x = np.linspace(0, self.xsize - 1, self.xsize, dtype=float)
+        #self.x -= self.xsize/2
+        #self.y = np.linspace(0, self.ysize - 1, self.ysize, dtype=float)
+        #self.y -= self.ysize/2
+
+        self.x = np.linspace(xmin, xmax - (self.xbin - 1), self.xsize, dtype=float)
+        self.x -= (xmax + 1) / 2
+        self.y = np.linspace(ymin, ymax - (self.ybin - 1), self.ysize, dtype=float)
+        self.y -= (ymax + 1) / 2
+
+        self.x *= self.dx
+        self.y *= self.dx
+        self.xx, self.yy = np.meshgrid(self.x, self.y)
+
+        self.x0 = np.copy(self.x)
+        self.y0 = np.copy(self.y)
+
+        print(self.epics_name)
+        print(self.xsize)
+        print(self.ysize)
+
+        self.FOV = np.max(self.x) - np.min(self.x)
+
+        self.N, self.M = np.shape(self.xx)
+
+        self.profile = np.zeros_like(self.xx)
+        self.x_lineout = np.zeros(self.M)
+        self.y_lineout = np.zeros(self.N)
+        self.projection_x = np.zeros(self.M)
+        self.projection_y = np.zeros(self.N)
+        if 'K' in self.epics_name:
+            self.photon_energy = PV('PMPS:KFE:PE:UND:CurrentPhotonEnergy_RBV').get()
+        else:
+            self.photon_energy = PV('PMPS:LFE:PE:UND:CurrentPhotonEnergy_RBV').get()
+
+        print('photon energy: %.2f' % self.photon_energy)
+        try:
+            self.lambda0 = 1239.8/self.photon_energy*1e-9
+        except ZeroDivisionError:
+            self.lambda0 = 0
+        self.time_stamp = 0.0
+        self.cx = 0
+        self.cy = 0
+        self.wx = 0
+        self.wy = 0
+        self.intensity = 0
+
+        f_x = np.linspace(-self.M / 2., self.M / 2. - 1., self.M) / self.M / self.dxm
+        f_y = np.linspace(-self.N / 2., self.N / 2. - 1., self.N) / self.N / self.dxm
+
+        self.f_x, self.f_y = np.meshgrid(f_x, f_y)
+
+        self.downsample = 3
+
+        self.Nd = int(self.N / (2 ** self.downsample))
+        self.Md = int(self.M / (2 ** self.downsample))
+
+        self.fit_object = None
+
+        # load in dummy image
+        #self.dummy_image = np.load('/cds/home/s/seaberg/Commissioning_Tools/PPM_centroid/im2l0_sim.npy')
+        img_data = np.load('/cds/home/s/seaberg/im5k4_run123.npz')
+        self.dummy_image = img_data['image']
+
+    def set_orientation(self, orientation):
+        self.orientation = orientation
+
+    def add_fit_object(self, fit_object):
+        self.fit_object = fit_object
+
+    def retrieve_wavefront(self, wfs, focusFOV=10, focus_z=0):
+        """
+        Method to calculate wavefront in the case where there is a wavefront sensor upstream of the PPM.
+        :param wfs: WFS object
+            Grating structure that generates Talbot interferometry patterns. Passed to this method to gain access
+            to its attributes.
+        :return wfs_data: dict
+            Includes the following entries
+            x_prime: (M,) ndarray
+                Horizontal coordinates for retrieved high-order phase
+            y_prime: (N,) ndarray
+                Vertical coordinates for retrieved high-order phase
+            x_res: (M,) ndarray
+                Horizontal residual phase (>2nd order) at points in x_prime
+            y_res: (N,) ndarray
+                Vertical residual phase (>2nd order) at points in y_prime
+            coeff_x: (k,) ndarray
+                Legendre coefficients for horizontal phase lineout
+            coeff_y: (k,) ndarray
+                Legendre coefficients for vertical phase lineout
+            z2x: float
+                Distance to horizontal focus
+            z2y: float
+                Distance to vertical focus
+        """
+
+        # print('retrieving wavefront')
+
+        # get Talbot fraction that we're using (fractional Talbot effect)
+        fraction = wfs.fraction
+
+        # Distance from wavefront sensor to PPM, 
+        # including correction based on z stage
+        zT = self.z - wfs.z - wfs.zPos()
+        
+        # include correction to f0 (distance between focus and grating)
+        # based on z stage
+        f0 = wfs.f0 + wfs.zPos()
+        print('f0: %.3f' % f0)
+        #print('zT: %.2f' % zT)
+
+        # magnification of Talbot pattern
+        mag = (zT + f0) / f0
+
+        # number of pixels to sum across to get lineout
+        lineout_width = int(wfs.pitch / self.dxm * 5 * mag)
+
+        im1 = self.profile
+
+        # expected spatial frequency of Talbot pattern (1/m)
+        peak = 1. / mag / wfs.pitch
+
+        fc = peak * self.dxm
+
+        x_mask = ((self.f_x - fc / self.dxm) ** 2 + self.f_y ** 2) < (fc / 4 / self.dxm) ** 2
+        x_mask = x_mask * (((self.f_x - fc / self.dxm) ** 2 + self.f_y ** 2) >
+                           (fc / 4. / self.dxm - 2. / self.M / self.dxm) ** 2)
+        x_mask = x_mask.astype(float)
+        y_mask = ((self.f_x) ** 2 + (self.f_y - fc / self.dxm) ** 2) < (fc / 4 / self.dxm) ** 2
+        y_mask = y_mask * (((self.f_x) ** 2 + (self.f_y - fc / self.dxm) ** 2) >
+                           (fc / 4. / self.dxm - 2. / self.N / self.dxm) ** 2)
+        y_mask = y_mask.astype(float)
+
+        # parameters for calculating Legendre coefficients
+        wfs_param = {
+                "dg": wfs.pitch,  # wavefront sensor pitch (m)
+                "fraction": fraction,  # wavefront sensor fraction
+                "dx": self.dxm,  # PPM pixel size
+                "zT": zT,  # distance between WFS and PPM
+                "lambda0": self.lambda0,  # beam wavelength
+                "downsample": 3, # Fourier downsampling power of 2
+                "zf": f0  # nominal distance from focus to grating
+                }
+
+        talbot_image = TalbotImage(im1, fc, fraction)
+        recovered_beam, wfs_param_out = talbot_image.get_legendre(self.fit_object, wfs_param, threshold=.1)
+
+        # check validity
+        # right now this is requiring that the peak is within half of the masked radius in the Fourier plane
+        validity = ((np.abs(wfs_param_out['h_peak'] - peak) < (peak/8)) and
+                    (np.abs(wfs_param_out['v_peak'] - peak) < (peak/8)))
+
+        # check target is in
+        target_in = 'TARGET' in wfs.check_state()
+
+        # for now require that centroid data is also valid
+        self.wavefront_is_valid = self.centroid_is_valid and validity and target_in
+
+        wave = self.fit_object.wavefront_fit(wfs_param_out['coeff'])
+        mask = np.abs(recovered_beam.wave[256 - int(self.Nd / 2):256 + int(self.Nd / 2),
+                      256 - int(self.Md / 2):256 + int(self.Md / 2)]) > 0
+        wave *= mask
+
+        mask_x = mask[int(self.Nd / 2), :]
+        mask_y = mask[:, int(self.Md / 2)]
+
+        x_prime = recovered_beam.x[256, 256 - int(self.Md / 2):256 + int(self.Md / 2)] * 1e6
+        y_prime = recovered_beam.y[256 - int(self.Nd / 2):256 + int(self.Nd / 2), 256] * 1e6
+        x_prime = x_prime[mask_x]
+        y_prime = y_prime[mask_y]
+        x_res = wave[int(self.Nd / 2), :][mask_x]
+        y_res = wave[:, int(self.Md / 2)][mask_y]
+        # print('x_res: %d' % np.size(x_res))
+
+        # going to try getting the third order Legendre polynomial here and try to get it to zero using benders
+        try:
+            leg_x = np.polynomial.legendre.legfit(x_prime*1e-6, x_res, 3)
+            leg_y = np.polynomial.legendre.legfit(y_prime*1e-6, y_res, 3)
+            coma_x = leg_x[3]
+            coma_y = leg_y[3]
+        except:
+            self.wavefront_is_valid = False
+            coma_x = 0
+            coma_y = 0
+
+        # setting rms_x/rms_y to third order Legendre coefficient for now.
+        rms_x = np.std(x_res)
+        rms_y = np.std(y_res)
+
+        x_width = np.std(x_res)
+        y_width = np.std(y_res)
+
+        zf_x = -(recovered_beam.zx - zT - f0) * 1e3
+        zf_y = -(recovered_beam.zy - zT - f0) * 1e3
+
+        # annotated Fourier transform
+        F0 = np.abs(wfs_param_out['F0'])
+
+        F0 = F0 / np.max(F0)
+        F0 += x_mask + y_mask
+
+        # plane to propagate to relative to IP (focus_z is given in mm)
+        z_plane = focus_z*1e-3
+
+        # propagate to focus
+        recovered_beam.beam_prop(-zT-f0 + z_plane)
+        focus = recovered_beam.wave
+        dx_focus = recovered_beam.dx
+        dy_focus = recovered_beam.dy
+        print('dx: %.2e' % dx_focus)
+        print('dy: %.2e' % dy_focus)
+        #focus = np.abs(focus)**2/np.max(np.abs(focus)**2)
+
+        focus_PPM = PPM('focus', FOV=focusFOV*1e-6, N=256)
+        focus_PPM.propagate(recovered_beam)
+        
+       
+        focus = focus_PPM.profile/np.max(focus_PPM.profile)
+        focus_horizontal = focus_PPM.x_lineout/np.max(focus_PPM.x_lineout)
+        focus_vertical = focus_PPM.y_lineout/np.max(focus_PPM.y_lineout)
+        focus_fwhm_horizontal = focus_PPM.wx
+        focus_fwhm_vertical = focus_PPM.wy
+
+        xf = focus_PPM.x * 1e6
+
+        #x_focus = recovered_beam.x[0, :]
+        #y_focus = recovered_beam.y[:, 0]
+        #x_interp = np.linspace(-256, 255, 512, dtype=float)*focusFOV*1e-6/512
+        #f = interpolation.interp2d(x_focus, y_focus, focus, fill_value=0)
+        #focus = f(x_interp, x_interp)
+        #focus_horizontal = np.sum(focus, axis=0)
+        #focus_vertical = np.sum(focus, axis=1)
+
+
+
+        # rms_x = np.std(x_res)
+        # rms_y = np.std(y_res)
+
+        # output. See method docstring for descriptions.
+        wfs_data = {
+                'x_res': x_res,
+                'x_prime': x_prime,
+                'y_res': y_res,
+                'y_prime': y_prime,
+                'z_x': zf_x,
+                'z_y': zf_y,
+                'rms_x': rms_x,
+                'rms_y': rms_y,
+                'coma_x': coma_x,
+                'coma_y': coma_y,
+                'F0': F0,
+                'focus': focus,
+                #'xf': x_interp*1e6,
+                'xf': xf,
+                'focus_fwhm_horizontal': focus_fwhm_horizontal,
+                'focus_fwhm_vertical': focus_fwhm_vertical,
+                'focus_horizontal': focus_horizontal,
+                'focus_vertical': focus_vertical,
+                'wave': wave,
+                'dxf': dx_focus,
+                'dyf': dy_focus
+                }
+
+        return wfs_data, wfs_param_out
+
+    def retrieve_wavefront2D(self, basis_file, wfs):
+        """
+        Method to calculate wavefront in the case where there is a wavefront sensor upstream of the PPM.
+        :param basis_file: string
+            Path to file containing pickled Legendre basis object.
+        :param wfs: WFS object
+            Grating structure that generates Talbot interferometry patterns. Passed to this method to gain access
+            to its attributes.
+        :return wfs_data: dict
+            Includes the following entries
+            x_prime: (M,) ndarray
+                Horizontal coordinates for retrieved high-order phase
+            y_prime: (N,) ndarray
+                Vertical coordinates for retrieved high-order phase
+            x_res: (M,) ndarray
+                Horizontal residual phase (>2nd order) at points in x_prime
+            y_res: (N,) ndarray
+                Vertical residual phase (>2nd order) at points in y_prime
+            coeff_x: (k,) ndarray
+                Legendre coefficients for horizontal phase lineout
+            coeff_y: (k,) ndarray
+                Legendre coefficients for vertical phase lineout
+            z2x: float
+                Distance to horizontal focus
+            z2y: float
+                Distance to vertical focus
+        """
+
+        print('retrieving wavefront')
+
+        # go ahead and retrieve 1D wavefront first
+        wfs_data, wfs_param = self.retrieve_wavefront(wfs)
+
+        # get Talbot fraction that we're using (fractional Talbot effect)
+        fraction = wfs.fraction
+
+        # Talbot image processing
+        # load basis
+        with open(basis_file, 'rb') as f:
+            fit_object = pickle.load(f)
+
+        # initialize Talbot image processing
+        image_calc = TalbotImage(self.profile, wfs_param['fc'], fraction)
+
+        # add parameters for calculating Legendre coefficients
+        wfs_param['downsample'] = 3
+        wfs_param['zf'] = f0
+        wfs_param['dg'] = wfs.x_pitch_sim
+
+        # calculate 2D legendre coefficients
+        print('getting 2D Legendre coefficients')
+        recovered_beam, fit_params = image_calc.get_legendre(fit_object, wfs_param)
+
+        # get complete wavefront with defocus
+        x = fit_params['x']
+        y = fit_params['y']
+        px = fit_params['px']
+        py = fit_params['py']
+        coeff = fit_params['coeff']
+
+        # add defocus to wavefront fit
+        full_wave = fit_object.wavefront_fit(coeff) + px * x**2 + py * y**2
+
+        # output. See method docstring for descriptions.
+        wfs_data2D = {
+                'recovered': recovered_beam,
+                'wave': full_wave
+                }
+
+        wfs_data.update(fit_params)
+
+        wfs_data.update(wfs_data2D)
+
+        return wfs_data
+
+    def stop(self):
+        self.running = False
+        self.x_bm_ctr.put(np.nan)
+        self.y_bm_ctr.put(np.nan)
+        try:
+            pass
+            #self.gige.cam.acquire.put(0, wait=True)
+        except AttributeError:
+            pass
+
+    def check_rate(self):
+        rate = PV(self.cam_name+'ArrayRate_RBV').get()
+
+        return rate
+
+    def reset_camera(self):
+        
+        try:
+            if self.check_rate()>0:
+                print('camera is acquiring')
+            else:
+                print('resetting camera')
+                self.gige.cam.acquire.put(0, wait=True)
+                self.gige.cam.acquire.put(1)
+        except:
+            print('no camera')
+
+    def get_dummy_image(self):
+        return self.dummy_image
+
+    def get_image(self, angle=0, demo=False):
+        #try:
+    # do averaging
+        if hasattr(self, 'average'):
+            numImages = getattr(self, 'average').get_numImages()
+        else:
+            numImages = 1
+       
+        if demo:
+            img = self.get_dummy_image()
+            print('shape: {}'.format(img.shape[0]))
+            time_stamp = datetime.timestamp(datetime.now())
+        else:
+            try:
+                image_data = self.image_pv.get_with_metadata()
+            except:
+                image_data = np.zeros((self.ysize, self.xsize))
+            #if 'value' in image_data.keys():
+            img = np.reshape(image_data['value'], (self.ysize, self.xsize)).astype(float)
+            if numImages > 1:
+                for i in range(numImages-1):
+                    # wait for the next image
+                    sleep(self.acquisition_period)
+                    image_data = self.image_pv.get_with_metadata()
+                    imgTemp = np.reshape(image_data['value'], (self.ysize, self.xsize)).astype(float)
+                    img += imgTemp
+
+
+            img = img/numImages
+
+            time_stamp = image_data['timestamp']
+
+        # time_stamp = image_data.time_stamp
+        # img = np.array(image_data.shaped_image,dtype='float')
+        # img = np.array(self.gige.image2.image,dtype='float')
+        #img = Util.threshold_array(img, self.threshold)
+        if self.orientation == 'action0':
+            self.profile = img
+            self.x = self.x0
+            self.y = self.y0
+        elif self.orientation == 'action90':
+            self.profile = np.rot90(img)
+            self.x = self.y0
+            self.y = self.x0
+        elif self.orientation == 'action180':
+            self.profile = np.rot90(img,2)
+            self.x = self.x0
+            self.y = self.y0
+        elif self.orientation == 'action270':
+            self.profile = np.rot90(img,3)
+            self.x = self.y0
+            self.y = self.x0
+        elif self.orientation == 'action0_flip':
+            self.profile = np.fliplr(img)
+            self.x = self.x0
+            self.y = self.y0
+        elif self.orientation == 'action90_flip':
+            self.profile = np.rot90(np.fliplr(img))
+            self.x = self.y0
+            self.y = self.x0
+        elif self.orientation == 'action180_flip':
+            self.profile = np.rot90(np.fliplr(img),2)
+            self.x = self.x0
+            self.y = self.y0
+        elif self.orientation == 'action270_flip':
+            self.profile = np.rot90(np.fliplr(img),3)
+            self.x = self.y0
+            self.y = self.x0
+
+        self.N = np.size(self.y)
+        self.M = np.size(self.x)
+
+        #print(self.M)
+        #print(self.N)
+
+        #angle = -0.2
+        #self.profile = ndimage.rotate(self.profile, angle, reshape=False)
+        #self.profile = sktransform.rotate(self.profile, angle)
+
+        temp_profile = Util.threshold_array(self.profile, self.threshold)
+
+        self.intensity = np.mean(temp_profile)
+        self.projection_x = np.mean(temp_profile, axis=0)
+        self.projection_y = np.mean(temp_profile, axis=1)
+
+        if self.roi is not None:
+            xs = np.array([self.roi[0],self.roi[2]])
+            ys = np.array([self.roi[1],self.roi[3]])
+            x1 = np.min(xs)
+            x2 = np.max(xs)
+            y1 = np.min(ys)
+            y2 = np.max(ys)
+
+            roi_mask_x = np.logical_and(self.xx>x1,self.xx<x2)
+            roi_mask_y = np.logical_and(self.yy>y1,self.yy<y2)
+            roi_mask = np.logical_and(roi_mask_x,roi_mask_y)
+            masked_profile = temp_profile*roi_mask
+            masked_profile -= np.min(masked_profile[roi_mask])
+            self.projection_x = np.mean(masked_profile,axis=0)
+            self.projection_y = np.mean(masked_profile,axis=1)
+
+        # get beam statistics
+        self.cx, self.cy, self.wx, self.wy, wx2, wy2 = self.beam_analysis(self.projection_x, self.projection_y)
+        # add imager state to validity
+        if 'MONO' in self.imager_prefix or 'SL' in self.imager_prefix:
+            imager_state = 'YAG'
+        elif 'IM' in self.imager_prefix:
+            imager_state = self.states_list[self.state.get()]
+        else:
+            imager_state = self.states_list[self.state.get()]
+        imager_in = 'YAG' in imager_state or 'DIAMOND' in imager_state
+
+        self.centroid_is_valid = self.centroid_is_valid and imager_in
+
+        x_center = Util.coordinate_to_pixel(self.cx, self.dx*self.xbin, self.M)
+        y_center = Util.coordinate_to_pixel(self.cy, self.dx*self.ybin, self.N)
+
+        #print(self.cx)
+        #print(self.cy)
+
+        if self.centroid_is_valid:
+            self.x_bm_ctr.put(self.cx)
+            self.y_bm_ctr.put(self.cy)
+        else:
+            self.x_bm_ctr.put(np.nan)
+            self.y_bm_ctr.put(np.nan)
+
+        #print(x_center)
+        #print(y_center)
+
+        try:
+            self.lineout_x = temp_profile[int(y_center), :]
+            self.lineout_y = temp_profile[:, int(x_center)]
+        except:
+            self.lineout_x = self.projection_x
+            self.lineout_y = self.projection_y
+
+
+        # gaussian fits
+        try:
+            fit_x = self.amp_x * np.exp(
+                -(self.x - self.cx) ** 2 / 2 / (self.wx / 2.355) ** 2)
+        except RuntimeWarning:
+            fit_x = np.zeros_like(self.lineout_x)
+        try:
+            fit_y = self.amp_y * np.exp(
+                -(self.y - self.cy) ** 2 / 2 / (self.wy / 2.355) ** 2)
+        except RuntimeWarning:
+            fit_y = np.zeros_like(self.lineout_y)
+
+
+        self.fit_x = fit_x
+        self.fit_y = fit_y
+
+        self.time_stamp = time_stamp
+
+        return img, time_stamp
+        #except:
+        #    self.lineout_x = np.zeros_like(self.x_lineout)
+        #    self.lineout_y = np.zeros_like(self.y_lineout)
+        #    print('no image')
+        #    return np.zeros((2048, 2048))
 
 
 class WFS:
@@ -2539,7 +3700,7 @@ class WFS:
 
     """
 
-    def __init__(self, name, pitch=None, duty_cycle=0.1, z=None, f0=100, phase=False, enabled=True, fraction=1):
+    def __init__(self, name, **kwargs):
         """
         Method to initialize a wavefront sensor.
         :param name: str
@@ -2554,6 +3715,7 @@ class WFS:
             Nominal distance to focus
         :param phase: bool
             If True, make a phase grating instead of an amplitude grating.
+            For now this is limited to a checkerboard grating.
         :param enabled: bool
             If True, wavefront sensor influences the beam, otherwise it is effectively "moved out" of the beam.
         :param fraction: int
@@ -2562,18 +3724,28 @@ class WFS:
 
         # set attributes
         self.name = name
-        self.pitch = pitch
-        self.duty_cycle = duty_cycle
-        self.f0 = f0
-        self.z = z
-        self.phase = phase
-        self.enabled = enabled
-        self.fraction = fraction
+        self.pitch = None
+        self.duty_cycle = 0.1
+        self.f0 = 100
+        self.z = None
+        self.phase = False
+        self.enabled = True
+        self.fraction = 1
+
+        # set allowed kwargs
+        allowed_arguments = ['pitch', 'duty_cycle', 'f0', 'z', 'phase', 'enabled',
+                             'fraction']
+        # update attributes based on kwargs
+        for key, value in kwargs.items():
+            if key in allowed_arguments:
+                setattr(self, key, value)
+
         # initialize some calculated attributes
         self.x_pitch = 0.
         self.y_pitch = 0.
-        self.grating_x = np.zeros(0)
-        self.grating_y = np.zeros(0)
+        self.x_pitch_sim = 0
+        self.y_pitch_sim = 0
+        self.grating = np.zeros(0)
 
     def propagate(self,beam):
         """
@@ -2613,19 +3785,24 @@ class WFS:
         """
 
         # get array sizes
-        N = np.size(beam.y)
-        M = np.size(beam.x)
+        N, M = np.shape(beam.x)
 
         # Number of pixels per grating period
         self.x_pitch = np.round(self.pitch/beam.dx)
+        if np.mod(self.x_pitch,2)!=0:
+                self.x_pitch += 1
+        self.x_pitch_sim = self.x_pitch*beam.dx
         self.y_pitch = np.round(self.pitch/beam.dy)
+        if np.mod(self.y_pitch,2)!=0:
+                self.y_pitch += 1
+        self.y_pitch_sim = self.y_pitch*beam.dy
+        print('actual pitch: %.2f microns' % (self.x_pitch*beam.dx*1e6))
 
-        print(self.pitch/beam.dx)
-        print(self.pitch/beam.dy)
+        # print(self.pitch/beam.dx)
+        # print(self.pitch/beam.dy)
 
         # re-initialize 1D gratings
-        self.grating_x = np.zeros(M)
-        self.grating_y = np.zeros(N)
+        self.grating = np.zeros((N, M))
 
         # calculate number of periods in the grating
         Mg = np.floor(M / self.x_pitch)
@@ -2635,22 +3812,123 @@ class WFS:
         x_width = int(self.x_pitch/2*self.duty_cycle)
         y_width = int(self.y_pitch/2*self.duty_cycle)
 
-        # loop through periods in the horizontal grating
-        for i in range(int(Mg)):
-            # each step defines one period
-            self.grating_x[int(self.x_pitch) * (i + 1) - x_width:int(self.x_pitch) * (i + 1) + x_width] = 1
-
-        # loop through features in the vertical grating
-        for i in range(int(Ng)):
-            # each step defines one period
-            self.grating_y[int(self.y_pitch) * (i+1) - y_width:int(self.y_pitch) * (i + 1) + y_width] = 1
+        # loop through periods in the grating
+        # for i in range(int(Mg)):
+        #     for j in range(int(Ng)):
+        #         minY = int(self.y_pitch) * (j+1) - y_width
+        #         maxY = int(self.y_pitch) * (j + 1) + y_width
+        #         minX = int(self.x_pitch) * (i + 1) - x_width
+        #         maxX = int(self.x_pitch) * (i + 1) + x_width
+        #         self.grating[minY:maxY, minX:maxX] = (1 + (-1)**(i+j) / 2)
 
         # convert to checkerboard pi phase grating if desired
         if self.phase:
 
-            self.grating_x = np.exp(1j*np.pi*self.grating_x)
-            self.grating_y = np.exp(1j*np.pi*self.grating_y)
-
+            # loop through periods in the grating
+            for i in range(int(Mg)):
+                for j in range(int(Ng)):
+                    minY = int(self.y_pitch) * (j + 1) - y_width
+                    maxY = int(self.y_pitch) * (j + 1) + y_width
+                    minX = int(self.x_pitch) * (i + 1) - x_width
+                    maxX = int(self.x_pitch) * (i + 1) + x_width
+                    self.grating[minY:maxY, minX:maxX] = (1 + (-1) ** (i + j) / 2)
+            self.grating = np.exp(1j*np.pi*self.grating)
+        # otherwise make a pinhole array
+        else:
+            # loop through periods in the grating
+            for i in range(int(Mg)):
+                for j in range(int(Ng)):
+                    minY = int(self.y_pitch) * (j + 1) - y_width
+                    maxY = int(self.y_pitch) * (j + 1) + y_width
+                    minX = int(self.x_pitch) * (i + 1) - x_width
+                    maxX = int(self.x_pitch) * (i + 1) + x_width
+                    self.grating[minY:maxY, minX:maxX] = 1
         # multiply beam by grating
-        beam.wavex *= self.grating_x
-        beam.wavey *= self.grating_y
+        beam.wave *= self.grating
+
+
+class WFS_Device(WFS):
+    def __init__(self, name, **kwargs):
+        super().__init__(name, **kwargs)
+
+        # set allowed kwargs
+        allowed_arguments = ['state']
+
+        # update attributes based on kwargs
+        for key, value in kwargs.items():
+            if key in allowed_arguments:
+                setattr(self, key, value)
+
+        self.epics_name = self.name + ':WFS:'
+
+        self.state = EpicsSignalRO(self.epics_name+'MMS:STATE:GET_RBV', auto_monitor=True)
+        self.z_motor = EpicsSignalRO(self.epics_name+'MMS:Z.RBV', auto_monitor=True)
+        self.states_list = ['Unknown', 'OUT', 'TARGET1', 'TARGET2', 'TARGET3', 'TARGET4', 'TARGET5']
+
+        # define z offset (in mm)
+        self.z_offset = 31.0
+
+        pitch_dict = {
+            'PF1K0': [39.6, 41, 41, 41, 39.6],
+            'PF1L0': [28.4, 29.9, 31.7, 33.9, 36.6],
+            'PF1K4': [35.8, 35.8, 35.8, 35.8, 34.6],
+            'PF2K4': [33.3, 33.3, 33.3, 33.3, 33.3],
+            'PF2K2': [36.4, 36.4, 36.4, 36.4, 32.0],
+            'PF2L2': [40.0/2, 35.0/2, 30.0/2, 30.0/2, 30.0/2]
+        }
+
+        z_dict = {
+            'PF1K0': 731.5855078,
+            'PF1L0': 735.6817413,
+            'PF1K4': 763.515,
+            #'PF1K4': 763.66694 - .0093,
+            'PF2K4': 768.583 - .0093,
+            #'PF2K2': 792.319 - .0093,
+            'PF2K2': 792.319 - .0093,
+            'PF2L2': 798.553
+        }
+
+        f0_dict = {
+            'PF1K0': 100,
+            'PF1L0': 100,
+            #'PF1K4': 1.772,
+            'PF1K4': 1.768,
+            #'PF1K4': 763.66694-.0093 - 761.89013,
+            'PF2K4': 0.996,
+            #'PF2K2': 2.3097
+            'PF2K2': 2.319 - .0093,
+            'PF2L2': 9.554
+        }
+
+        #state_rbv = PV(self.epics_name + 'MMS:STATE:GET_RBV').get()
+        #self.z_pv = EpicsSignalRO(self.epics_name+'MMS:Z', name='omitted')
+
+        # state 0 is OUT, need to subtract 1 to align with target positions
+        state = self.state.value - 2
+        #state = self.state.value
+        print(state)
+        # for testing purposes we will set OUT to state 0
+        if state < 0:
+            state = 0
+
+        try:
+            # account for Talbot fraction here
+            self.pitch = pitch_dict[self.name][state] * 1.e-6
+            print(self.pitch)
+            self.pitch *= 1/self.fraction
+            self.z = z_dict[self.name]
+            self.f0 = f0_dict[self.name]
+            print('pitch: %.4e' % self.pitch)
+        except:
+            self.pitch = 30.0
+            self.z = z_dict['PF1L0']
+            self.f0 = 100
+
+    def check_state(self):
+
+        return self.states_list[self.state.value]
+
+    def zPos(self):
+        # z position in meters
+        zPos = (self.z_motor.value - self.z_offset)*1e-3
+        return zPos

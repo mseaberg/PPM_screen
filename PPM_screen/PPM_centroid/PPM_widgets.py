@@ -146,13 +146,11 @@ class ImagerControls(QImager, Ui_Imager):
         self.setupUi(self)
 
         self.imager_prefix = self.yStateReadback.channel[5:16]
+        self.motor_prefix = None
 
         self.nominalButton.clicked.connect(self.restore_nominal)
 
         self.nominal_controls = {
-                'zoom': self.zoomLineEdit,
-                'focus': self.focusLineEdit,
-                'ND': self.ndStateComboBox,
                 'AcquireTime': self.acquireLineEdit
                 }
         self.expertButton.pressed.connect(self.open_expert_screen)
@@ -193,30 +191,50 @@ class ImagerControls(QImager, Ui_Imager):
         #self.acquireLineEdit.setText('.008')
         #self.acquireLineEdit.send_value()
 
-    def change_imager(self, imager_prefix):
-        
-        self.imager_prefix = imager_prefix
+    def change_imager(self, imager_dict):
+        self.imager_prefix = imager_dict['prefix']
+        if 'motor' in imager_dict.keys() and 'mms_num' in imager_dict.keys():
+            self.motor_prefix = imager_dict['motor']
+            mms_num = imager_dict['mms_num']
+        else:
+            self.motor_prefix = None
+            mms_num = None
+
         self.change_channel(self.yStateReadback, 'MMS:STATE:GET_RBV')
         self.change_channel(self.yStateComboBox, 'MMS:STATE:SET')
-        self.change_channel(self.zoomReadback, 'CLZ.RBV')
-        self.change_channel(self.zoomLineEdit, 'CLZ.VAL')
-        self.change_channel(self.focusReadback, 'CLF.RBV')
-        self.change_channel(self.focusLineEdit, 'CLF.VAL')
-        self.change_channel(self.ndStateReadback, 'MFW:GET_RBV')
-        self.change_channel(self.ndStateComboBox, 'MFW:SET')
-        if 'L2' not in imager_prefix:
+        if 'L2' in self.imager_prefix:
+            self.change_channel(self.acquireReadback, 'CAM:01:AcquireTime_RBV')
+            self.change_channel(self.acquireLineEdit, 'CAM:01:AcquireTime')
+        elif 'IM' in self.imager_prefix:
             self.change_channel(self.acquireReadback, 'CAM:AcquireTime_RBV')
             self.change_channel(self.acquireLineEdit, 'CAM:AcquireTime')
         else:
-            self.change_channel(self.acquireReadback, 'CAM:01:AcquireTime_RBV')
-            self.change_channel(self.acquireLineEdit, 'CAM:01:AcquireTime')
+            self.change_channel(self.acquireReadback, 'AcquireTime_RBV')
+            self.change_channel(self.acquireLineEdit, 'AcquireTime')
 
-        self.change_channel(self.yPosReadback, 'MMS.RBV')
-        self.change_channel(self.yPosLineEdit, 'MMS.VAL')
+        #self.change_channel(self.yPosReadback, 'MMS.RBV')
+        #self.change_channel(self.yPosLineEdit, 'MMS.VAL')
+        if self.motor_prefix:
+            self.change_legacy(self.yagPushButton, 'PIM:YAG:GO')
+            self.change_legacy(self.outPushButton, 'PIM:OUT:GO')
+            self.change_legacy(self.yagLabel, 'PIM.VAL')
+            self.change_legacy(self.yPosReadback, 'MMS:'+mms_num+'.RBV')
+            self.change_legacy(self.yPosLineEdit, 'MMS:'+mms_num+'.VAL')
+        else:
+            self.yagPushButton.channel = 'ca://None'
+            self.outPushButton.channel = 'ca://None'
+            self.yagLabel.channel = 'ca://None'
+            self.change_channel(self.yPosReadback, 'MMS.RBV')
+            self.change_channel(self.yPosLineEdit, 'MMS.VAL')
+
+
 
     def change_channel(self, obj, suffix):
-
+        
         obj.channel = 'ca://'+self.imager_prefix+suffix
+
+    def change_legacy(self, obj, suffix):
+        obj.channel = 'ca://'+self.motor_prefix+suffix
 
     def open_expert_screen(self):
         if 'XTES' in self.imager_prefix:

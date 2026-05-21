@@ -3,121 +3,193 @@ import time
 from pyqtgraph.Qt import QtCore
 from ophyd import EpicsSignalRO as SignalRO
 from ophyd import EpicsSignal as Signal
-from pcdsdevices.mirror import KBOMirror
+from pcdsdevices.signal import AvgSignal
+from undpoint import UndPointDelta2D
 import os
-
-
-class Calibration(QtCore.QThread):
-
-    def __init__(self, data_handler):
-        #super(Calibration, self).__init__()
-        QtCore.QThread.__init__(self)
-        self.data_handler = data_handler
-        self.mr2k4 = KBOMirror('MR2K4:KBO', name='mr2k4')
-        self.mr3k4 = KBOMirror('MR3K4:KBO', name='mr3k4')
-        try:
-            self.mr2k4.wait_for_connection()
-        except:
-            print('failed to connect to all mr2k4 signals')
-        try:
-            self.mr3k4.wait_for_connection()
-        except:
-            print('failed to connect to all mr3k4 signals')
-
-    def run(self):
-        starting_point = self.mr2k4.pitch.position
-
-        for i in range(10):
-            self.mr2k4.pitch.mvr(1, wait=True)
-            time.sleep(2)
-        self.mr2k4.pitch.mv(starting_point)
-        print('calibration complete')
-        self.quit()
 
 
 class Alignment(QtCore.QObject):
 
     sig_finished = QtCore.pyqtSignal()
 
-    def __init__(self, data_handler, curr_imager_dict, goals):
+    def __init__(self, curr_imager_dict):
         super(Alignment, self).__init__()
 
-        photon_energy = SignalRO('PMPS:KFE:PE:UND:CurrentPhotonEnergy_RBV').get()
+        self.imager_prefix = curr_imager_dict['prefix']
+        mirror_prefix = curr_imager_dict['mirror']
+        self.mirror = Mirror(mirror_prefix)
+        self.undulator = None
+        self.calib = None
+        self.error = None
+        self.new_error = None
+        self.error_y = None
+        self.new_error_y = None
+        self.calib_y = None
 
-        hfm_pv = curr_imager_dict['hfm']
-        vfm_pv = curr_imager_dict['vfm']
+        if mirror_prefix == 'und':
+            self.undulator = UndPointDelta2D(prefix="MFX:USER:MCC:UND",name='undulator')
 
-        base_path = os.path.dirname(os.path.abspath(__file__))+'/calibration/'
+        if 'L2' in self.imager_prefix:
+            self.cam_name = self.imager_prefix + 'CAM:01:'
+        elif 'IM' in self.imager_prefix:
+            self.cam_name = self.imager_prefix + 'CAM:'
+        else:
+            self.cam_name = self.imager_prefix
 
+        self.x_target = SignalRO(self.cam_name+'X_RTCL_CTR').get()
+        self.y_target = SignalRO(self.cam_name+'Y_RTCL_CTR').get()
+        x_centroid = SignalRO(self.cam_name+'X_BM_CTR')
+        y_centroid = SignalRO(self.cam_name+'Y_BM_CTR')
+        print(x_centroid.get())
 
-        filename = '{}_{}.npz'.format(curr_imager_dict['hutch'], curr_imager_dict['IP'])
+        self.avg_x_centroid = AvgSignal(x_centroid, 10, 2, name='avg_x_centroid')
+        self.avg_y_centroid = AvgSignal(y_centroid, 10, 2, name='avg_y_centroid')
 
-        try:
-            calib_data = np.load(base_path+filename)
-            self.Ax = calib_data['Ax']
-            self.Ay = calib_data['Ay']
-        except IOError:
-            print('no calibration file exists')
-            self.Ax = np.zeros((2,2))
-            self.Ay = np.copy(self.Ax)
-        except ValueError:
-            print('problem with the calibration file')
-            self.Ax = np.zeros((2, 2))
-            self.Ay = np.copy(self.Ax)
+    def get_centroid(self):
+        status_x = self.avg_x_centroid.trigger()
+        status_y = self.avg_y_centroid.trigger()
+        all_status = [status_x, status_y]
 
-        self.data_handler = data_handler
-        self.hfm = KBMirror(hfm_pv, name=hfm_pv[:5].lower())
-        self.vfm = KBMirror(vfm_pv, name=vfm_pv[:5].lower())
+        done_reading = False
 
-        self.lambda0 = 1239.8/photon_energy*1e-9
-
-        # goals is just a dictionary. Each entry in the dictionary is a 1D array. The second entry will probably
-        # always be zero since this corresponds to undesirable 3rd order
-        self.x_goals = goals['x']
-        self.y_goals = goals['y']
+        while not done_reading:
+            time.sleep(0.1)
+            done_reading = all([status.done for status in all_status])
+        out_x = self.avg_x_centroid.get()
+        out_y = self.avg_y_centroid.get()
+        # make sure we get a good reading before continuing
+        # if np.isnan(out):
+        #     print('need to get a better signal')
+        #     self.get_centroid()
+        return out_x, out_y
 
     def run(self):
 
         self.running = True
-        self._update()
+        if self.undulator is not None:
+            self._und_run()
+        else:
+            self._run()
+
+    def _run(self):
+
+        if self.running:
+
+            # check centroid before moving anything
+            cen_x, cen_y = self.get_centroid()
+            print(cen_x - self.x_target)
+
+            self.error = cen_x - self.x_target
+            # move mirror slightly
+            print('moving mirror')
+            print(self.mirror.pitch.get())
+            self.mirror.pitch.mvr(1, wait=True)
+            cen_x, cen_y = self.get_centroid()
+            self.new_error = cen_x - self.x_target
+            self.calib = (self.new_error - self.error) / 1
+            print('calibration: {} um/urad'.format(self.calib))
+            self._update()
+            # print(self.new_error)
+            # #while np.abs(new_error) > 50:
+            # condition = True
+            # while condition:
+            #     adj = -new_error / self.calib
+            #     print(adj)
+            #     #self.mirror.pitch.mvr(adj, wait=True)
+            #     cen_x, cen_y = self.get_centroid()
+            #     new_error = cen_x - self.x_target.value
+            #     print(new_error)
+            #     time.sleep(.1)
+            #     condition = False
+            # print('alignment completed')
+            #
+            # self.sig_finished.emit()
 
     def _update(self):
+        if self.running:
+
+            try:
+                adj = -self.new_error / self.calib
+            except ZeroDivisionError:
+                print('problem with calibration')
+                self.sig_finished.emit()
+                return
+
+            print(adj)
+            self.mirror.pitch.mvr(adj, wait=True)
+            cen_x, cen_y = self.get_centroid()
+            self.new_error = cen_x - self.x_target
+            print(self.new_error)
+            if np.abs(self.new_error)>20:
+                QtCore.QTimer.singleShot(200, self._update)
+            else:
+                print('alignment completed')
+
+                self.sig_finished.emit()
+
+    def _und_run(self):
         # need to get some updates from the RunProcessing object to see where we are currently. We also need to
 
         # need a while loop here to collect some data
 
         if self.running:
 
-            data_dict = self.data_handler.data_dict
-            # wait for at least 3 shots in a row of the incoming data to be valid
+            # check centroid before moving anything
+            cen_x, cen_y = self.get_centroid()
+            print(cen_x - self.x_target)
+
+            self.error = cen_x - self.x_target
+            self.error_y = cen_y - self.y_target
+            # move undulator slightly
+            self.undulator.move(position=(20,20),wait=True)
+            cen_x, cen_y = self.get_centroid()
+            self.new_error = cen_x - self.x_target
+            self.new_error_y = cen_y - self.y_target
+            self.calib = (self.new_error - self.error) / 20
+            self.calib_y = (self.new_error_y - self.error_y) / 20
+            print(self.new_error)
+            self._und_update()
+            # #while np.abs(new_error) > 50:
+            # condition = True
+            # while condition:
+            #     adj = -new_error / calib
+            #     print(adj)
+            #     #self.undulator.move(position=adj, wait=True)
+            #     cen_x, cen_y = self.get_centroid()
+            #     new_error = cen_x - self.x_target.value
+            #     print(new_error)
+            #     time.sleep(.1)
+            #     condition = False
+            # print('alignment completed')
+            #
+            # self.sig_finished.emit()
+
+    def _und_update(self):
+        if self.running:
             try:
-                counter = np.sum(data_dict['wavefront_is_valid'][-3:])
-                print('counter %d' % counter)
-            except:
-                counter = -1
-            z_x = np.mean(data_dict['z_x'][-3:])
-            z_y = np.mean(data_dict['z_y'][-3:])
-            coma_x = np.mean(data_dict['coma_x'][-3:])*self.lambda0
-            coma_y = np.mean(data_dict['coma_y'][-3:])*self.lambda0
+                adj = -self.new_error / self.calib
+                adj_y = -self.new_error_y / self.calib_y
+            except ZeroDivisionError:
+                print('problem with calibration')
+                self.sig_finished.emit()
+                return
 
-            if counter < 3:
-                QtCore.QTimer.singleShot(2000, self._update)
+
+            print(adj)
+            if np.abs(adj)>50:
+                adj = np.sign(adj)*50
+            if np.abs(adj_y)>50:
+                adj_y = np.sign(adj_y)*50
+            self.undulator.move((adj,adj_y), wait=True)
+            cen_x, cen_y = self.get_centroid()
+            self.new_error = cen_x - self.x_target
+            self.new_error_y = cen_y - self.y_target
+            print(self.new_error_y)
+            if np.abs(self.new_error)>20 or np.abs(self.new_error_y)>20:
+                QtCore.QTimer.singleShot(200, self._und_update)
             else:
-                # calculate desired move
-                current_x = np.array([z_x, coma_x])
-                current_y = np.array([z_y, coma_y])
+                print('alignment completed')
 
-                delta_x = self.x_goals - current_x
-                delta_y = self.y_goals - current_y
-
-                motion_x = np.dot(self.Ax, delta_x)
-                motion_y = np.dot(self.Ay, delta_y)
-
-                # move the mirrors
-                self.hfm.bender_us.mvr(motion_x[0])
-                self.hfm.bender_ds.mvr(motion_x[1])
-                self.vfm.bender_us.mvr(motion_y[0])
-                self.vfm.bender_ds.mvr(motion_y[1])
                 self.sig_finished.emit()
 
     def cancel(self):
@@ -127,27 +199,33 @@ class Alignment(QtCore.QObject):
 class Motor():
     def __init__(self, pv_name):
         self.setpoint = Signal(pv_name)
-        self.rbv = SignalRO(pv_name+'.RBV', auto_monitor=True)
+        self.rbv = SignalRO(pv_name+'.RBV')
+        self.moving = SignalRO(pv_name + '.MOVN')
 
-    def mv(self, target, wait=False, tol=0.1):
+    def mv(self, target, wait=True):
         self.set(target)
         if wait:
-            while np.abs(self.get() - target) > tol:
-                time.sleep(0.2)
+            # while np.abs(self.get() - target) > tol:
+            #    time.sleep(0.2)
+            moving_status = True
+            while moving_status:
+                moving_status = self.moving.get()
+                time.sleep(0.1)
+        print('move completed')
 
-    def mvr(self, adjustment, wait=False, tol=0.1):
+    def mvr(self, adjustment, wait=True):
         target = self.get() + adjustment
-        self.mv(target, wait=wait, tol=tol)
+        self.mv(target, wait=wait)
 
     def get(self):
-        return self.rbv.value
+        return self.rbv.get()
 
     def set(self, target):
         self.setpoint.set(target)
 
 
 
-class KBMirror():
+class Mirror():
 
     def __init__(self, mirror_base, name=None):
         # initialize attributes
@@ -156,8 +234,3 @@ class KBMirror():
         self.motor_base = self.mirror_base + ':MMS'
         # initialize epics signals
         self.pitch = Motor(self.motor_base+':PITCH')
-        self.x = Motor(self.motor_base+':X')
-        self.y = Motor(self.motor_base+':Y')
-        self.bender_us = Motor(self.motor_base+':BEND:US')
-        self.bender_ds = Motor(self.motor_base+':BEND:DS')
-

@@ -3,18 +3,15 @@ import numpy as np
 import scipy.ndimage.interpolation as interpolate
 import scipy.ndimage as ndimage
 import time
-from pyqtgraph.Qt import QtCore
+#from pyqtgraph.Qt import QtCore
+from PyQt5 import QtCore
+
 #from pcdsdevices.areadetector.detectors import PCDSAreaDetector
-from PPM_screen.xraybeamline2d import optics
-from PPM_screen.polyprojection.legendre import LegendreFit2D
-import sys
+from PPM_screen.PPM_centroid import optics
 import pandas as pd
 from analysis_tools import YagAlign
 from datetime import datetime
 from ophyd import EpicsSignalRO as SignalRO
-from imager_data import DataHandler
-import os.path
-import pickle
 
 
 class RunProcessing(QtCore.QObject):
@@ -26,7 +23,7 @@ class RunProcessing(QtCore.QObject):
         super(RunProcessing, self).__init__()
         #QtCore.QThread.__init__(self)
 
-        self.thread = thread
+        #self.thread = thread
         self.hutch = hutch
         imager_prefix = imager_dict['prefix']
 
@@ -65,7 +62,7 @@ class RunProcessing(QtCore.QObject):
             self.WFS_object = None
 
         # PPM object for image acquisition and processing
-        self.PPM_object = optics.PPM_Device(imager_dict, average=averageWidget, threshold=self.threshold,roi=roi)
+        self.PPM_object = optics.PPM_Device(imager_dict, average=averageWidget, threshold=self.threshold, roi=roi)
 
         # frame rate initialization
         self.fps = 0.
@@ -88,27 +85,7 @@ class RunProcessing(QtCore.QObject):
         else:
             self.data_handler.initialize(self.PPM_object)
 
-        # downsampling is hard-coded here for now
-        downsample = 3
 
-        # calculate downsampled array sizes
-        Nd = int(self.PPM_object.N / (2 ** downsample))
-        Md = int(self.PPM_object.M / (2 ** downsample))
-
-        # Legendre order is hard-coded here for now
-        order = 16
-        ###### set up Legendre basis
-        if self.wfs_name is not None:
-            # check if fit object file exists
-            basis_file = self.hutch_path+'/wfs_files/legendre_{}_{}_{}.pickle'.format(Nd,Md,order)
-            if os.path.isfile(basis_file):
-                with open(basis_file, 'rb') as f:
-                    fit_object = pickle.load(f)
-            else:
-                fit_object = LegendreFit2D(Nd, Md, order)
-                with open(basis_file, 'wb') as f:
-                    pickle.dump(fit_object, f)
-            self.PPM_object.add_fit_object(fit_object)
         self.running = True
         self.sig_initialized.emit()
 
@@ -137,7 +114,7 @@ class RunProcessing(QtCore.QObject):
         return width, height
 
     def _update(self):
-
+        #time1 = time.time()
         if self.running:
 
             if self.displayWidget is not None:
@@ -151,7 +128,6 @@ class RunProcessing(QtCore.QObject):
 
             # get latest image
             self.PPM_object.get_image(angle=angle)
-            
             # wavefront sensing
             if self.WFS_object is not None:
                 wfs_data, wfs_param = self.PPM_object.retrieve_wavefront(self.WFS_object, focusFOV=focusFOV, focus_z=focus_z)
@@ -171,6 +147,8 @@ class RunProcessing(QtCore.QObject):
         else:
             self.sig_finished.emit()
             self.timer.stop()
+        #time2 = time.time()
+        #print('calculation: {}'.format(time2-time1))
 
     def stop(self):
         self.running = False

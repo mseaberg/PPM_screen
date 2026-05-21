@@ -12,13 +12,13 @@ import json
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 from PyQt5.uic import loadUiType
-from PyQt5.QtCore import Qt
+#from PyQt5.QtCore import Qt
 import warnings
 from processing_module import RunProcessing
 from Image_registration_epics import App
 import PPM_widgets
 from imager_data import DataHandler
-from motion_module import Calibration, Alignment
+from motion_module import Alignment
 from io_module import ImagerHdf5, ElogHandler
 from subprocess import check_output
 import os
@@ -53,8 +53,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # button to start calculations
         self.runButton.clicked.connect(self.change_state)
-        # button to start calibration
-        self.calibrateButton.clicked.connect(self.calibrate)
         self.alignmentButton.clicked.connect(self.align_focus)
         self.actionReset_Plots.triggered.connect(self.reset_plots)
         self.actionSave_Data.triggered.connect(self.save_data)
@@ -256,7 +254,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # initialize registration object
         self.processing = None
-        self.calib = None
         self.alignment_message = None
         self.align = None
         self.alignment_thread = None
@@ -265,24 +262,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # attribute describing if trajectory is set
         self.trajectory_is_set = False
-
-    def calibrate(self):
-        calib_plot = PPM_widgets.NewPlot(self, self.data_handler.plot_keys())
-        calib_plot.xaxis_comboBox.setCurrentText('timestamps')
-        calib_plot.yaxis_comboBox.setCurrentText('MR2K4:KBO:MMS:PITCH.RBV')
-        calib_plot.min_lineEdit.setText('-100')
-        calib_plot.update_min()
-        calib_plot.update_axes()
-        calib_plot.show()
-        self.plots.append(calib_plot)
-
-        self.calibrateButton.setEnabled(False)
-
-        self.calib = Calibration(self.data_handler)
-        #self.calib.finished.connect(lambda event=0: calib_plot.closeEvent(event))
-        #self.calib.finished.connect(calib_plot.close)
-        self.calib.finished.connect(self.enable_calibrate)
-        self.calib.start()
 
     def enable_calibrate(self):
         self.calibrateButton.setEnabled(True)
@@ -307,28 +286,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def align_focus(self):
 
-        # get current z position goals
-        try:
-            z_x_target = float(self.xFocusLineEdit.text())
-        except ValueError:
-            z_x_target = 0.0
-            self.xFocusLineEdit.setText('0.0')
-        try:
-            z_y_target = float(self.yFocusLineEdit.text())
-        except ValueError:
-            z_y_target = 0.0
-            self.yFocusLineEdit.setText('0.0')
-
         # disable alignment button
         self.alignmentButton.setEnabled(False)
 
-        goals = {
-            'x': np.array([z_x_target, 0]),
-            'y': np.array([z_y_target, 0])
-        }
-
         self.alignment_message = QtWidgets.QMessageBox()
-        self.align = Alignment(self.data_handler, self.curr_imager_dict, goals)
+        self.align = Alignment(self.curr_imager_dict)
         self.align.sig_finished.connect(self.alignment_finished)
 
         # initialize a new thread
@@ -342,7 +304,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # make a dialog box to allow killing the thread
         self.alignment_message.setIcon(QtWidgets.QMessageBox.Information)
-        self.alignment_message.setText("Attempting focus alignment")
+        self.alignment_message.setText("Attempting alignment")
         self.alignment_message.setWindowTitle("Alignment")
         self.alignment_message.setStandardButtons(QtWidgets.QMessageBox.Cancel)
 
@@ -375,13 +337,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
     def enable_align(self):
         #if self.wfs_name=='PF1K4':
         try:
-            if 'hutch' in self.curr_imager_dict.keys():
-                allowed_hutch = self.hutch.lower()==self.curr_imager_dict['hutch']
+            if 'mirror' in self.curr_imager_dict.keys():
+                has_mirror = True
             else:
-                allowed_hutch = False
-            wfs_exists = self.wfs_name is not None
-            wfs_calc = self.wavefrontCheckBox.isChecked()
-            if allowed_hutch and wfs_exists and wfs_calc:
+                has_mirror = False
+            if has_mirror:
                 self.alignmentButton.setEnabled(True)
         except:
             print('image_info.json file is incomplete')
@@ -440,7 +400,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         """
         # get current file contents
         try:
-            with open('imagers.db') as json_file:
+            with open(local_path+'/imagers.db') as json_file:
                 data = json.load(json_file)
 
         except json.decoder.JSONDecodeError:
@@ -619,7 +579,13 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         #self.imagerpv = self.imagerpv_list[index]
         self.imagerpv = self.curr_imager_dict['prefix']
-        self.imagerControls.change_imager(self.imagerpv)
+        if 'IM' in self.imagerpv:
+            motor_prefix = None
+            mms_num = None
+        else:
+            motor_prefix = self.curr_imager_dict['motor']
+            mms_num = self.curr_imager_dict['mms_num']
+        self.imagerControls.change_imager(self.curr_imager_dict)
         self.imagerStats.change_imager(self.imagerpv)
 
         # hdf5 object
@@ -672,10 +638,10 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             
             if self.imagerStats.roiCheckBox.isChecked():
                 self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-                                            threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch,crossWidget=self.crosshairsWidget)
+                                            threshold=self.imagerStats.get_threshold(), hutch=self.hutch,crossWidget=self.crosshairsWidget)
             else:
                 self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-                                            threshold=self.imagerStats.get_threshold(), thread=self.thread, hutch=self.hutch)
+                                            threshold=self.imagerStats.get_threshold(), hutch=self.hutch)
 
 
 
@@ -858,7 +824,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         data_dict: dict
             This is where all the data to display is stored
         """
-
+       
+        #time1 = time.time()
         data_dict = self.data_handler.data_dict
 
         # get validity
@@ -932,3 +899,5 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         for plot in self.plots:
             plot.update_plot(data_dict, self.data_handler.plot_keys())
+        #time2 = time.time()
+        #print('plot update: {}'.format(time2-time1))

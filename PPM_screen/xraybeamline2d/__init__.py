@@ -1,1 +1,0 @@
-name = "xraybeamline2d"
