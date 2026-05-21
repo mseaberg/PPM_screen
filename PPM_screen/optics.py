@@ -16,18 +16,12 @@ CRL: compound refractive lens (parabolic)
 PPM: power profile monitor, for viewing beam intensity
 """
 import numpy as np
-import matplotlib.pyplot as plt
-import json
 from time import sleep
 import scipy.interpolate as interpolation
 import scipy.ndimage as ndimage
 import scipy.optimize as optimize
-import scipy.spatial.transform as transform
-import skimage.transform as sktransform
 from skimage.restoration import unwrap_phase
 from datetime import datetime
-import os
-import pickle
 from .util import Util
 try:
     from epics import PV

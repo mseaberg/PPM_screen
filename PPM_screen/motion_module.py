@@ -5,7 +5,6 @@ from ophyd import EpicsSignalRO as SignalRO
 from ophyd import EpicsSignal as Signal
 from pcdsdevices.signal import AvgSignal
 from undpoint import UndPointDelta2D
-import os
 
 
 class Alignment(QtCore.QObject):
