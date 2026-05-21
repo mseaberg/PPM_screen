@@ -15,7 +15,7 @@ export OMP_NUM_THREADS=1
 parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 
 cd "$parent_path"
-cd ../PPM_screen/PPM_centroid
+cd ../PPM_screen
 
 if [ $# -eq 1 ]; then
     IMAGER=$1
