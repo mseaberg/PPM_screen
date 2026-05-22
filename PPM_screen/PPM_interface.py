@@ -258,6 +258,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.lineComboBox.currentIndexChanged.connect(self.change_line)
         # connect imager combo box
         self.imagerComboBox.currentIndexChanged.connect(self.change_imager)
+        self.running = False
         self.change_imager(cam_index)
 
     def enable_calibrate(self):
@@ -609,6 +610,97 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
     def reset_plots(self):
         self.reset_sig.emit()
 
+    def start_thread(self):
+        #self.runButton.setEnabled(False)
+
+        # check if we are going to calculate the wavefront. Set wfs_name to None if not.
+        #if self.wavefrontCheckBox.isChecked():
+        #    wfs_name = self.wfs_name
+        #else:
+        #    wfs_name = None
+
+        # get Talbot fraction. This will eventually be automated based on the photon energy and WFS state.
+        #try:
+        #    fraction = float(self.wfsControls.fractionLineEdit.text())
+        #except ValueError:
+        #    fraction = 1
+        
+        # initialize a new thread
+        #self.thread = QtCore.QThread()
+
+        # initialize processing object. This really needs a dictionary as input...
+        
+        if self.imagerStats.roiCheckBox.isChecked():
+            self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
+                                        threshold=self.imagerStats.get_threshold(), hutch=self.hutch,crossWidget=self.crosshairsWidget)
+        else:
+            self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
+                                        threshold=self.imagerStats.get_threshold(), hutch=self.hutch)
+
+
+
+        # connect processing object to plotting function
+        self.processing.sig.connect(self.update_plots)
+        
+        # connect to initialized signal
+        self.processing.sig_initialized.connect(self.enable_run_button)
+
+        # find out what the FOV of the screen is
+        width, height = self.processing.get_FOV()
+        # set the orientation for processing
+        self.processing.set_orientation(self.orientation)
+
+        # update viewboxes based on FOV
+        self.imageWidget.update_viewbox(width, height)
+        #if self.displayWidget.display_choice == 'Focus':
+        #    self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
+        #elif self.displayWidget.display_choice == 'Fourier transform':
+        #    FFT_width = 1/self.processing.PPM_object.dxm
+        #    self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
+        #else:
+            # this would eventually change for the FFT option
+        #    self.wavefrontWidget.update_viewbox(width, height)
+
+        # update crosshair sizes
+        self.crosshairsWidget.update_crosshair_width()
+        #self.wavefrontCrosshairsWidget.update_crosshair_width()
+
+        # update width for circle displayed on beam
+        self.imagerStats.update_width()
+
+        #initialize a new thread
+        self.thread = QtCore.QThread()
+
+        # move to new thread and connect to thread signals
+        self.processing.moveToThread(self.thread)
+        self.thread.started.connect(self.processing.run)
+        self.thread.finished.connect(self.enable_run_button)
+        self.thread.finished.connect(self.start_thread)
+        self.kill_sig.connect(self.processing.stop)
+        self.reset_sig.connect(self.processing.reset_plots)
+        self.processing.sig_finished.connect(self.quit_thread)
+        self.save_sig.connect(self.processing.save_data)
+        
+        print('starting thread')
+        # start processing
+        self.thread.start()
+
+        # change the button state
+        self.runButton.setText('Stop')
+        #self.runButton.setEnabled(True)
+        # disable wavefront sensor checkbox until stop is pressed
+        #self.wavefrontCheckBox.setEnabled(False)
+        self.imagerStats.roiCheckBox.setEnabled(False)
+        self.imagerStats.thresholdLineEdit.setEnabled(False)
+
+        # disable imager selection until Stop is pressed
+        #self.lineComboBox.setEnabled(False)
+        #self.imagerComboBox.setEnabled(False)
+        #self.calibrateButton.setEnabled(True)
+        #self.alignmentButton.setEnabled(True)
+        self.statusbar.showMessage('Starting acquisition...')
+
+
     def change_state(self, run=True):
         """
         Method to start the calculation running, or stop it.
@@ -616,97 +708,103 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # check if "Run" was selected
         if run:
-
-            self.runButton.setEnabled(False)
-
-            # check if we are going to calculate the wavefront. Set wfs_name to None if not.
-            #if self.wavefrontCheckBox.isChecked():
-            #    wfs_name = self.wfs_name
-            #else:
-            #    wfs_name = None
-
-            # get Talbot fraction. This will eventually be automated based on the photon energy and WFS state.
-            #try:
-            #    fraction = float(self.wfsControls.fractionLineEdit.text())
-            #except ValueError:
-            #    fraction = 1
-            
-            # initialize a new thread
-            self.thread = QtCore.QThread()
-
-            # initialize processing object. This really needs a dictionary as input...
-            
-            if self.imagerStats.roiCheckBox.isChecked():
-                self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-                                            threshold=self.imagerStats.get_threshold(), hutch=self.hutch,crossWidget=self.crosshairsWidget)
+            print('starting')
+            #self.runButton.setEnabled(False)
+            if not self.running:
+                self.start_thread()
+                self.running = True
             else:
-                self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-                                            threshold=self.imagerStats.get_threshold(), hutch=self.hutch)
+                self.running = True
 
+            ## check if we are going to calculate the wavefront. Set wfs_name to None if not.
+            ##if self.wavefrontCheckBox.isChecked():
+            ##    wfs_name = self.wfs_name
+            ##else:
+            ##    wfs_name = None
 
+            ## get Talbot fraction. This will eventually be automated based on the photon energy and WFS state.
+            ##try:
+            ##    fraction = float(self.wfsControls.fractionLineEdit.text())
+            ##except ValueError:
+            ##    fraction = 1
+            #
+            ## initialize a new thread
+            #self.thread = QtCore.QThread()
 
-            # connect processing object to plotting function
-            self.processing.sig.connect(self.update_plots)
-            
-            # connect to initialized signal
-            self.processing.sig_initialized.connect(self.enable_run_button)
-
-            # find out what the FOV of the screen is
-            width, height = self.processing.get_FOV()
-            # set the orientation for processing
-            self.processing.set_orientation(self.orientation)
-
-            # update viewboxes based on FOV
-            self.imageWidget.update_viewbox(width, height)
-            #if self.displayWidget.display_choice == 'Focus':
-            #    self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
-            #elif self.displayWidget.display_choice == 'Fourier transform':
-            #    FFT_width = 1/self.processing.PPM_object.dxm
-            #    self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
+            ## initialize processing object. This really needs a dictionary as input...
+            #
+            #if self.imagerStats.roiCheckBox.isChecked():
+            #    self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
+            #                                threshold=self.imagerStats.get_threshold(), hutch=self.hutch,crossWidget=self.crosshairsWidget)
             #else:
-                # this would eventually change for the FFT option
-            #    self.wavefrontWidget.update_viewbox(width, height)
+            #    self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
+            #                                threshold=self.imagerStats.get_threshold(), hutch=self.hutch)
 
-            # update crosshair sizes
-            self.crosshairsWidget.update_crosshair_width()
-            #self.wavefrontCrosshairsWidget.update_crosshair_width()
 
-            # update width for circle displayed on beam
-            self.imagerStats.update_width()
 
-            # initialize a new thread
-            self.thread = QtCore.QThread()
+            ## connect processing object to plotting function
+            #self.processing.sig.connect(self.update_plots)
+            #
+            ## connect to initialized signal
+            #self.processing.sig_initialized.connect(self.enable_run_button)
 
-            # move to new thread and connect to thread signals
-            self.processing.moveToThread(self.thread)
-            self.thread.started.connect(self.processing.run)
-            self.thread.finished.connect(self.enable_run_button)
-            self.kill_sig.connect(self.processing.stop)
-            self.reset_sig.connect(self.processing.reset_plots)
-            self.processing.sig_finished.connect(self.quit_thread)
-            self.save_sig.connect(self.processing.save_data)
+            ## find out what the FOV of the screen is
+            #width, height = self.processing.get_FOV()
+            ## set the orientation for processing
+            #self.processing.set_orientation(self.orientation)
 
-            # start processing
-            self.thread.start()
+            ## update viewboxes based on FOV
+            #self.imageWidget.update_viewbox(width, height)
+            ##if self.displayWidget.display_choice == 'Focus':
+            ##    self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
+            ##elif self.displayWidget.display_choice == 'Fourier transform':
+            ##    FFT_width = 1/self.processing.PPM_object.dxm
+            ##    self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
+            ##else:
+            #    # this would eventually change for the FFT option
+            ##    self.wavefrontWidget.update_viewbox(width, height)
 
-            # change the button state
-            self.runButton.setText('Stop')
-            #self.runButton.setEnabled(True)
-            # disable wavefront sensor checkbox until stop is pressed
-            #self.wavefrontCheckBox.setEnabled(False)
-            self.imagerStats.roiCheckBox.setEnabled(False)
-            self.imagerStats.thresholdLineEdit.setEnabled(False)
+            ## update crosshair sizes
+            #self.crosshairsWidget.update_crosshair_width()
+            ##self.wavefrontCrosshairsWidget.update_crosshair_width()
 
-            # disable imager selection until Stop is pressed
-            #self.lineComboBox.setEnabled(False)
-            #self.imagerComboBox.setEnabled(False)
-            #self.calibrateButton.setEnabled(True)
-            #self.alignmentButton.setEnabled(True)
-            self.statusbar.showMessage('Starting acquisition...')
+            ## update width for circle displayed on beam
+            #self.imagerStats.update_width()
+
+            ## initialize a new thread
+            #self.thread = QtCore.QThread()
+
+            ## move to new thread and connect to thread signals
+            #self.processing.moveToThread(self.thread)
+            #self.thread.started.connect(self.processing.run)
+            #self.thread.finished.connect(self.enable_run_button)
+            #self.kill_sig.connect(self.processing.stop)
+            #self.reset_sig.connect(self.processing.reset_plots)
+            #self.processing.sig_finished.connect(self.quit_thread)
+            #self.save_sig.connect(self.processing.save_data)
+            #
+            #print('starting thread')
+            ## start processing
+            #self.thread.start()
+
+            ## change the button state
+            #self.runButton.setText('Stop')
+            ##self.runButton.setEnabled(True)
+            ## disable wavefront sensor checkbox until stop is pressed
+            ##self.wavefrontCheckBox.setEnabled(False)
+            #self.imagerStats.roiCheckBox.setEnabled(False)
+            #self.imagerStats.thresholdLineEdit.setEnabled(False)
+
+            ## disable imager selection until Stop is pressed
+            ##self.lineComboBox.setEnabled(False)
+            ##self.imagerComboBox.setEnabled(False)
+            ##self.calibrateButton.setEnabled(True)
+            ##self.alignmentButton.setEnabled(True)
+            #self.statusbar.showMessage('Starting acquisition...')
 
         # check if "Stop" was selected
         else:
-
+            print('stopping')
             self.runButton.setEnabled(False)
             # stop processing and quit the thread
             #self.thread.quit()
@@ -809,7 +907,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         """
         # check if anything is running, otherwise do nothing else
         if self.runButton.text() == 'Stop':
-            self.processing.stop()
+            self.kill_sig.emit()
+            #self.processing.stop()
             self.thread.quit()
             self.thread.wait()
 
