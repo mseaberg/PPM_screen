@@ -71,11 +71,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         #self.plotRangeLineEdit.returnPressed.connect(self.set_time_range)
         #self.wfsPlotRangeLineEdit.returnPressed.connect(self.set_time_range)
 
-        # connect line combo box
-        self.lineComboBox.currentIndexChanged.connect(self.change_line)
-        # connect imager combo box
-        self.imagerComboBox.currentIndexChanged.connect(self.change_imager)
-
         # list of QAction objects for controlling the image orientation
         self.orientation_actions = [self.action0, self.action90, self.action180, self.action270, 
                 self.action0_flip, self.action90_flip, self.action180_flip, self.action270_flip]
@@ -258,6 +253,12 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # attribute describing if trajectory is set
         self.trajectory_is_set = False
+
+        # connect line combo box
+        self.lineComboBox.currentIndexChanged.connect(self.change_line)
+        # connect imager combo box
+        self.imagerComboBox.currentIndexChanged.connect(self.change_imager)
+        self.change_imager(cam_index)
 
     def enable_calibrate(self):
         self.calibrateButton.setEnabled(True)
@@ -592,6 +593,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.data_handler.uninitialize()
         self.load_orientation()
 
+        self.change_state()
+
     def enable_run_button(self):
         self.runButton.setEnabled(True)
         self.statusbar.clearMessage()
@@ -605,13 +608,13 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
     def reset_plots(self):
         self.reset_sig.emit()
 
-    def change_state(self):
+    def change_state(self, run=True):
         """
         Method to start the calculation running, or stop it.
         """
 
         # check if "Run" was selected
-        if self.runButton.text() == 'Run':
+        if run:
 
             self.runButton.setEnabled(False)
 
@@ -694,14 +697,14 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.imagerStats.thresholdLineEdit.setEnabled(False)
 
             # disable imager selection until Stop is pressed
-            self.lineComboBox.setEnabled(False)
-            self.imagerComboBox.setEnabled(False)
+            #self.lineComboBox.setEnabled(False)
+            #self.imagerComboBox.setEnabled(False)
             #self.calibrateButton.setEnabled(True)
             #self.alignmentButton.setEnabled(True)
             self.statusbar.showMessage('Starting acquisition...')
 
         # check if "Stop" was selected
-        elif self.runButton.text() == 'Stop':
+        else:
 
             self.runButton.setEnabled(False)
             # stop processing and quit the thread
@@ -722,8 +725,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
             #self.runButton.setEnabled(True)
             # re-enable imager selection
-            self.lineComboBox.setEnabled(True)
-            self.imagerComboBox.setEnabled(True)
+            #self.lineComboBox.setEnabled(True)
+            #self.imagerComboBox.setEnabled(True)
             self.imagerStats.roiCheckBox.setEnabled(True)
             self.imagerStats.thresholdLineEdit.setEnabled(True)
 
