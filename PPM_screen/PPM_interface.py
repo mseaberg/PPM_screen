@@ -18,6 +18,7 @@ from motion_module import Alignment
 from io_module import ImagerHdf5, ElogHandler
 from subprocess import check_output
 import os
+import time
 
 
 local_path = os.path.dirname(os.path.abspath(__file__))
@@ -259,6 +260,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # connect imager combo box
         self.imagerComboBox.currentIndexChanged.connect(self.change_imager)
         self.running = False
+        self.thread_quit = True
         self.change_imager(cam_index)
 
     def enable_calibrate(self):
@@ -606,6 +608,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def quit_thread(self):
         self.thread.quit()
+        self.thread_quit = True
 
     def reset_plots(self):
         self.reset_sig.emit()
@@ -684,6 +687,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         print('starting thread')
         # start processing
         self.thread.start()
+        self.thread_quit = False
 
         # change the button state
         self.runButton.setText('Stop')
@@ -909,8 +913,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.runButton.text() == 'Stop':
             self.kill_sig.emit()
             #self.processing.stop()
-            self.thread.quit()
-            self.thread.wait()
+            #self.thread.quit()
+            #self.thread.wait()
+            print('exiting')
+            QtCore.QTimer.singleShot(0, event.accept)
+            #event.accept()
 
     def update_plots(self):
         """

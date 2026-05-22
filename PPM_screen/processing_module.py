@@ -142,11 +142,13 @@ class RunProcessing(QtCore.QObject):
                 pass
             else:
                 self.PPM_object.reset_camera()
-                self.sig_finished.emit()
                 self.timer.stop()
+                self.sig_finished.emit()
+                #self.timer.stop()
         else:
-            self.sig_finished.emit()
             self.timer.stop()
+            self.sig_finished.emit()
+            #self.timer.stop()
         #time2 = time.time()
         #print('calculation: {}'.format(time2-time1))
 
