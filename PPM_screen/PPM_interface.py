@@ -556,6 +556,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         index: int
             index corresponding to which imager as defined in self.imager_list
         """
+        self.change_state(run=False)
         # update imager
         self.imager = self.imager_list[index]
         self.imageGroupBox.setTitle(self.imager)
