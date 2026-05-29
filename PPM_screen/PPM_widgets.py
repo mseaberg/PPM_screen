@@ -14,6 +14,7 @@ import subprocess
 
 local_path = os.path.dirname(os.path.abspath(__file__))
 
+Ui_Slit, QSlit = loadUiType(local_path+'/Slit_controls.ui')
 Ui_LineoutImage, QLineoutImage = loadUiType(local_path+'/LineoutImage.ui')
 Ui_Crosshair, QCrosshair = loadUiType(local_path+'/Crosshair.ui')
 Ui_LevelsWidget, QLevelsWidget = loadUiType(local_path+'/LevelsWidget.ui')
@@ -136,6 +137,48 @@ class WFSControls(Qwfs, Ui_wfs):
         
         proc = subprocess.Popen(['/bin/bash','-c',"typhos \"pcdsdevices.wfs.WaveFrontSensorTarget[{\'prefix\':\'%s\',\'name\':\'%s\'}]\"" % (self.wfs_prefix[:-1],self.wfs_prefix[:-5])])
 
+
+class SlitControls(QSlit, Ui_Slit):
+    """
+    Widget class to store slit controls
+    """
+    def __init__(self, parent=None):
+        super(SlitControls, self).__init__()
+        self.setupUi(self)
+
+        self.motor_prefix = None
+
+    def change_imager(self, imager_dict):
+        if 'slit' in imager_dict.keys():
+            self.motor_prefix = imager_dict['slit']
+        else:
+            self.motor_prefix = None
+
+        if self.motor_prefix is not None:
+            self.change_channel(self.hGapLabel,'ACTUAL_XWIDTH')
+            self.change_channel(self.vGapLabel,'ACTUAL_YWIDTH')
+            self.change_channel(self.hGapLineEdit,'XWID_REQ')
+            self.change_channel(self.vGapLineEdit,'YWID_REQ')
+            self.change_channel(self.hCenterLabel,'ACTUAL_XCENTER')
+            self.change_channel(self.vCenterLabel,'ACTUAL_YCENTER')
+            self.change_channel(self.hCenterLineEdit,'XCEN_REQ')
+            self.change_channel(self.vCenterLineEdit,'YCEN_REQ')
+        else:
+            self.hGapLabel.channel = 'ca://None'
+            self.vGapLabel.channel = 'ca://None'
+            self.hGapLineEdit.channel = 'ca://None'
+            self.vGapLineEdit.channel = 'ca://None'
+            self.hCenterLabel.channel = 'ca://None'
+            self.vCenterLabel.channel = 'ca://None'
+            self.hCenterLineEdit.channel = 'ca://None'
+            self.vCenterLineEdit.channel = 'ca://None'
+            
+
+    def change_channel(self, obj, suffix):
+        
+        obj.channel = 'ca://'+self.motor_prefix+suffix
+
+       
 
 class ImagerControls(QImager, Ui_Imager):
     """

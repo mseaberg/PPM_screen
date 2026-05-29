@@ -23,19 +23,22 @@
       "prefix": "XRT:DG1:GIGE:01:",
       "motor": "HXX:UM6:",
       "mirror": "MR2L0:HOMS",
-      "mms_num": "08"
+      "mms_num": "08",
+      "slit": "HXX:UM6:JAWS:"
     },
     "xrt_yag2": {
       "prefix": "XRT:DG2:GIGE:01:",
       "motor": "HFX:DG2:",
       "mirror": "MR2L0:HOMS",
-      "mms_num": "09"
+      "mms_num": "09",
+      "slit": "HFX:DG2:JAWS:"
     },
     "xrt_yag3": {
       "prefix": "XRT:DG3:GIGE:01:",
       "motor": "HFX:DG3:",
       "mirror": "MR2L0:HOMS",
-      "mms_num": "08"
+      "mms_num": "08",
+      "slit": "HFX:DG3:JAWS:"
     }
   },
   "L1": {

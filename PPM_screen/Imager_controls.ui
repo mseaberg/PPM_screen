@@ -98,6 +98,9 @@
      <property name="toolTip">
       <string/>
      </property>
+     <property name="showUnits" stdset="0">
+      <bool>true</bool>
+     </property>
      <property name="channel" stdset="0">
       <string>ca://IM1L0:XTES:MMS.RBV</string>
      </property>
@@ -113,6 +116,9 @@
      </property>
      <property name="toolTip">
       <string/>
+     </property>
+     <property name="showUnits" stdset="0">
+      <bool>true</bool>
      </property>
      <property name="channel" stdset="0">
       <string>ca://IM1L0:XTES:MMS.VAL</string>
@@ -183,6 +189,9 @@
      <property name="toolTip">
       <string/>
      </property>
+     <property name="showUnits" stdset="0">
+      <bool>true</bool>
+     </property>
      <property name="channel" stdset="0">
       <string>ca://IM1L0:XTES:CAM:AcquireTime_RBV</string>
      </property>
@@ -198,6 +207,9 @@
      </property>
      <property name="toolTip">
       <string/>
+     </property>
+     <property name="showUnits" stdset="0">
+      <bool>true</bool>
      </property>
      <property name="channel" stdset="0">
       <string>ca://IM1L0:XTES:CAM:AcquireTime</string>

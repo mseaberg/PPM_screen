@@ -50,7 +50,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         print(path2)
 
         # button to start calculations
-        self.runButton.clicked.connect(self.change_state)
+        #self.runButton.clicked.connect(self.change_state)
         self.alignmentButton.clicked.connect(self.align_focus)
         self.actionReset_Plots.triggered.connect(self.reset_plots)
         self.actionSave_Data.triggered.connect(self.save_data)
@@ -566,6 +566,10 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.imageGroupBox.setTitle(self.imager)
         #self.wavefrontGroupBox.setTitle(self.imager)
         self.curr_imager_dict = self.imager_info[self.line][self.imager]
+        if 'slit' in self.curr_imager_dict.keys():
+            self.slitGroupBox.setTitle(self.curr_imager_dict['slit'])
+        else:
+            self.slitGroupBox.setTitle('No associated slits')
         # check if this imager has a wavefront sensor
         #if self.imager in self.WFS_list:
         #if 'wfs' in self.curr_imager_dict.keys():
@@ -588,6 +592,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             motor_prefix = self.curr_imager_dict['motor']
             mms_num = self.curr_imager_dict['mms_num']
         self.imagerControls.change_imager(self.curr_imager_dict)
+        self.slitControls.change_imager(self.curr_imager_dict)
         self.imagerStats.change_imager(self.imagerpv)
 
         # hdf5 object
@@ -601,11 +606,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.change_state()
 
     def enable_run_button(self):
-        self.runButton.setEnabled(True)
+        #self.runButton.setEnabled(True)
         self.statusbar.clearMessage()
-        if self.runButton.text() == 'Stop':
+        #if self.runButton.text() == 'Stop':
             #self.alignmentButton.setEnabled(True)
-            self.enable_align()
+        self.enable_align()
 
     def quit_thread(self):
         self.thread.quit()
@@ -691,7 +696,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.thread_quit = False
 
         # change the button state
-        self.runButton.setText('Stop')
+        #self.runButton.setText('Stop')
         #self.runButton.setEnabled(True)
         # disable wavefront sensor checkbox until stop is pressed
         #self.wavefrontCheckBox.setEnabled(False)
@@ -810,7 +815,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # check if "Stop" was selected
         else:
             print('stopping')
-            self.runButton.setEnabled(False)
+            #self.runButton.setEnabled(False)
             # stop processing and quit the thread
             #self.thread.quit()
             #self.thread.wait()
@@ -818,7 +823,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.statusbar.showMessage('Stopping acquisition...')
 
             # update the button to be ready to "Run"
-            self.runButton.setText('Run')
+            #self.runButton.setText('Run')
             self.calibrateButton.setEnabled(False)
             self.alignmentButton.setEnabled(False)
             # re-enable wavefront sensor checkbox if imager is has a wavefront sensor
@@ -911,19 +916,19 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         event: signal
         """
         # check if anything is running, otherwise do nothing else
-        if self.runButton.text() == 'Stop':
-            event.ignore()
-            self.thread.finished.disconnect(self.start_thread)
-            self.kill_sig.emit()
-            #self.processing.stop()
-            #self.thread.quit()
-            #self.thread.wait()
-            print('exiting')
-            time.sleep(1)
-            #timer = threading.Timer(0.1) 
-            event.accept()
-            #QtCore.QTimer.singleShot(1000, event.accept)
-            #event.accept()
+        #if self.runButton.text() == 'Stop':
+        event.ignore()
+        self.thread.finished.disconnect(self.start_thread)
+        self.kill_sig.emit()
+        #self.processing.stop()
+        #self.thread.quit()
+        #self.thread.wait()
+        print('exiting')
+        time.sleep(1)
+        #timer = threading.Timer(0.1) 
+        event.accept()
+        #QtCore.QTimer.singleShot(1000, event.accept)
+        #event.accept()
 
     def update_plots(self):
         """
