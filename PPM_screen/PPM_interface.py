@@ -19,6 +19,7 @@ from io_module import ImagerHdf5, ElogHandler
 from subprocess import check_output
 import os
 import time
+import threading
 
 
 local_path = os.path.dirname(os.path.abspath(__file__))
@@ -911,12 +912,17 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         """
         # check if anything is running, otherwise do nothing else
         if self.runButton.text() == 'Stop':
+            event.ignore()
+            self.thread.finished.disconnect(self.start_thread)
             self.kill_sig.emit()
             #self.processing.stop()
             #self.thread.quit()
             #self.thread.wait()
             print('exiting')
-            QtCore.QTimer.singleShot(0, event.accept)
+            time.sleep(1)
+            #timer = threading.Timer(0.1) 
+            event.accept()
+            #QtCore.QTimer.singleShot(1000, event.accept)
             #event.accept()
 
     def update_plots(self):

@@ -137,15 +137,16 @@ class RunProcessing(QtCore.QObject):
             # send data
             self.sig.emit()
             # keep running unless the stop button is pressed
-            if self.running:
-                #QtCore.QTimer.singleShot(500, self._update)
-                pass
-            else:
-                self.PPM_object.reset_camera()
-                self.timer.stop()
-                self.sig_finished.emit()
-                #self.timer.stop()
+            #if self.running:
+            #    #QtCore.QTimer.singleShot(500, self._update)
+            #    pass
+            #else:
+            #    self.PPM_object.reset_camera()
+            #    self.timer.stop()
+            #    self.sig_finished.emit()
+            #    #self.timer.stop()
         else:
+            self.PPM_object.stop()
             self.timer.stop()
             self.sig_finished.emit()
             #self.timer.stop()
@@ -154,7 +155,7 @@ class RunProcessing(QtCore.QObject):
 
     def stop(self):
         self.running = False
-        self.PPM_object.stop()
+        #self.PPM_object.stop()
 
 
 class RunRegistration(QtCore.QObject):
