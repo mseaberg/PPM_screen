@@ -40,7 +40,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             print(args.camera)
             cam = args.camera
         else:
-            cam = 'IM1L0'
+            cam = 'IM3L0'
 
         self.local_path = os.path.dirname(os.path.abspath(__file__))
 

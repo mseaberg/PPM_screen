@@ -434,7 +434,7 @@ class PPM_Device(PPM):
 
         port = PV(self.epics_name + 'PortName_RBV').get()
 
-        array_rate = PV(self.epics_name + 'ROI:EnableCallbacks').get()
+        array_rate = PV(self.epics_name + 'EnableCallbacks').get()
 
 
         if port is None or array_rate==0:
@@ -457,6 +457,8 @@ class PPM_Device(PPM):
         self.orientation = 'action0'
 
         print(self.epics_name)
+
+        array_port = PV(self.epics_name + 'NDArrayPort_RBV').get()
 
 
         FOV_dict = {
@@ -606,7 +608,7 @@ class PPM_Device(PPM):
         self.dxm = self.dx * 1e-6 * self.xbin
 
         print(self.xsize)
-        if self.xsize == 0:
+        if self.xsize == 0 or array_port=='CAM':
             self.xsize = PV(self.epics_name + 'ArraySize0_RBV').get()
             self.ysize = PV(self.epics_name + 'ArraySize1_RBV').get()
             xmin = 0
@@ -686,8 +688,12 @@ class PPM_Device(PPM):
 
     def stop(self):
         self.running = False
-        self.x_bm_ctr.put(np.nan)
-        self.y_bm_ctr.put(np.nan)
+        try:
+            self.x_bm_ctr.put(np.nan)
+            self.y_bm_ctr.put(np.nan)
+        except:
+            pass
+            #print('Write access denied')
         try:
             pass
             #self.gige.cam.acquire.put(0, wait=True)
@@ -834,13 +840,16 @@ class PPM_Device(PPM):
         #print(self.cx)
         #print(self.cy)
 
-        if self.centroid_is_valid:
-            self.x_bm_ctr.put(self.cx)
-            self.y_bm_ctr.put(self.cy)
-        else:
-            self.x_bm_ctr.put(np.nan)
-            self.y_bm_ctr.put(np.nan)
-
+        try:
+            if self.centroid_is_valid:
+                self.x_bm_ctr.put(self.cx)
+                self.y_bm_ctr.put(self.cy)
+            else:
+                self.x_bm_ctr.put(np.nan)
+                self.y_bm_ctr.put(np.nan)
+        except:
+            pass
+            #print('Write access not allowed')
         #print(x_center)
         #print(y_center)
 

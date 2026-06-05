@@ -5,7 +5,7 @@
 #source /reg/g/pcds/pyps/apps/hutch-python/xpp/xppenv
 
 #source /cds/home/s/seaberg/beamlineconda.sh
-source /reg/g/pcds/pyps/apps/hutch-python/xcs/xcsenv
+source /reg/g/pcds/pyps/apps/hutch-python/cxi/cxienv
 export PYTHONPATH=$PYTHONPATH:/cds/home/s/seaberg/Python/PPM_screen
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1

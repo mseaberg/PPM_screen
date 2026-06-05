@@ -148,6 +148,9 @@ class SlitControls(QSlit, Ui_Slit):
 
         self.motor_prefix = None
 
+    def go(self):
+        PV(self.motor_prefix+"GO").put(1)
+
     def change_imager(self, imager_dict):
         if 'slit' in imager_dict.keys():
             self.motor_prefix = imager_dict['slit']
@@ -155,14 +158,28 @@ class SlitControls(QSlit, Ui_Slit):
             self.motor_prefix = None
 
         if self.motor_prefix is not None:
-            self.change_channel(self.hGapLabel,'ACTUAL_XWIDTH')
-            self.change_channel(self.vGapLabel,'ACTUAL_YWIDTH')
-            self.change_channel(self.hGapLineEdit,'XWID_REQ')
-            self.change_channel(self.vGapLineEdit,'YWID_REQ')
-            self.change_channel(self.hCenterLabel,'ACTUAL_XCENTER')
-            self.change_channel(self.vCenterLabel,'ACTUAL_YCENTER')
-            self.change_channel(self.hCenterLineEdit,'XCEN_REQ')
-            self.change_channel(self.vCenterLineEdit,'YCEN_REQ')
+            if 'SL' in self.motor_prefix:
+                self.change_channel(self.hGapLabel,"ACTUAL_XWIDTH_RBV")
+                self.change_channel(self.vGapLabel,"ACTUAL_YWIDTH_RBV")
+                self.change_channel(self.hGapLineEdit,"XWID_REQ")
+                self.change_channel(self.vGapLineEdit,"YWID_REQ")
+                self.change_channel(self.hCenterLabel,"ACTUAL_XCENTER_RBV")
+                self.change_channel(self.vCenterLabel,"ACTUAL_YCENTER_RBV")
+                self.change_channel(self.hCenterLineEdit,"XCEN_REQ")
+                self.change_channel(self.vCenterLineEdit,"YCEN_REQ")
+                #self.hGapLineEdit.returnPressed.connect(self.go)
+                #self.vGapLineEdit.returnPressed.connect(self.go)
+                #self.hCenterLineEdit.returnPressed.connect(self.go)
+                #self.vCenterLineEdit.returnPressed.connect(self.go)
+            else:
+                self.change_channel(self.hGapLabel,'ACTUAL_XWIDTH')
+                self.change_channel(self.vGapLabel,'ACTUAL_YWIDTH')
+                self.change_channel(self.hGapLineEdit,'XWID_REQ')
+                self.change_channel(self.vGapLineEdit,'YWID_REQ')
+                self.change_channel(self.hCenterLabel,'ACTUAL_XCENTER')
+                self.change_channel(self.vCenterLabel,'ACTUAL_YCENTER')
+                self.change_channel(self.hCenterLineEdit,'XCEN_REQ')
+                self.change_channel(self.vCenterLineEdit,'YCEN_REQ')
         else:
             self.hGapLabel.channel = 'ca://None'
             self.vGapLabel.channel = 'ca://None'
