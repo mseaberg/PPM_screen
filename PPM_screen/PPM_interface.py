@@ -14,7 +14,7 @@ from processing_module import RunProcessing
 from Image_registration_epics import App
 import PPM_widgets
 from imager_data import DataHandler
-from motion_module import Alignment
+from motion_module import Alignment, Attenuate
 from io_module import ImagerHdf5, ElogHandler
 from subprocess import check_output
 import os
@@ -54,6 +54,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.alignmentButton.clicked.connect(self.align_focus)
         self.actionReset_Plots.triggered.connect(self.reset_plots)
         self.actionSave_Data.triggered.connect(self.save_data)
+        self.applyTransmissionButton.clicked.connect(self.apply_transmission)
 
         self.plotButton.clicked.connect(self.make_new_plot)
         # method to save an image. Maybe replace and/or supplement this with image "recording" in the future
@@ -64,10 +65,10 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.actionSave_with_hdf5_plugin.triggered.connect(self.capture_trajectory)
 
         self.actionPost_to_elog.triggered.connect(self.elog_post)
-        self.trajectoryButton.clicked.connect(self.capture_trajectory)
+        #self.trajectoryButton.clicked.connect(self.capture_trajectory)
 
-        self.unhappyCheckBox.toggled.connect(self.unhappy_trajectory)
-        self.happyCheckBox.toggled.connect(self.happy_trajectory)
+        #self.unhappyCheckBox.toggled.connect(self.unhappy_trajectory)
+        #self.happyCheckBox.toggled.connect(self.happy_trajectory)
 
         # adjustment for amount of time to show on plots (this should be cleaned up later)
         #self.plotRangeLineEdit.returnPressed.connect(self.set_time_range)
@@ -250,6 +251,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.alignment_message = None
         self.align = None
         self.alignment_thread = None
+        self.attenuate_thread = None
+        self.attenuate = None
 
         self.plots = []
 
@@ -263,6 +266,25 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.running = False
         self.thread_quit = True
         self.change_imager(cam_index)
+
+    def apply_transmission(self):
+        self.applyTransmissionButton.setEnabled(False)
+        
+        self.attenuate = Attenuate()
+        self.attenuate.sig_finished.connect(self.attenuate_finished)
+
+        self.attenuate_thread = QtCore.QThread()
+
+        self.attenuate.moveToThread(self.attenuate_thread)
+
+        self.attenuate_thread.started.connect(self.attenuate.run)
+        self.attenuate_thread.start()
+
+
+    def attenuate_finished(self):
+        self.attenuate_thread.quit()
+        self.attenuate_thread.wait()
+        self.applyTransmissionButton.setEnabled(True)
 
     def enable_calibrate(self):
         self.calibrateButton.setEnabled(True)

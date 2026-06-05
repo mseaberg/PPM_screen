@@ -12,10 +12,12 @@ export NUMEXPR_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 
 #cd /cds/home/s/seaberg/TMO_IP2/Commissioning_Tools/PPM_centroid
-parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+#parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+HERE=`dirname $(readlink -f $0)`
 
-cd "$parent_path"
-cd ../PPM_screen
+
+#cd "$parent_path"
+#cd ../PPM_screen
 
 if [ $# -eq 1 ]; then
     IMAGER=$1
@@ -23,4 +25,4 @@ else
     IMAGER="IM3L0"
 fi
 
-python run_interface.py -c $IMAGER &
+python $HERE/../PPM_screen/run_interface.py -c $IMAGER &

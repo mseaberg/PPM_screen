@@ -108,7 +108,7 @@ class Alignment(QtCore.QObject):
         if self.running:
 
             try:
-                adj = -self.new_error / self.calib
+                adj = -self.new_error / self.calib * 0.9
             except ZeroDivisionError:
                 print('problem with calibration')
                 self.sig_finished.emit()
@@ -222,6 +222,28 @@ class Motor():
     def set(self, target):
         self.setpoint.set(target)
 
+class Attenuate(QtCore.QObject):
+    sig_finished = QtCore.pyqtSignal()
+
+    def __init__(self):
+        super(Attenuate, self).__init__()
+        self.calculate = Signal('AT2L0:CALC:SYS:Run')
+        self.apply = Signal('AT2L0:CALC:SYS:ApplyConfiguration')
+        self.status = None
+
+    def run(self):
+        # run calculation
+        self.status = self.calculate.set(1)
+        #while not self.status.done:
+        #    time.sleep(0.1)
+        #print('finished calculating')
+        self.status.wait()
+
+        # apply configuration
+        self.status = self.apply.set(1)
+        self.status.wait()
+
+        self.sig_finished.emit()
 
 
 class Mirror():
