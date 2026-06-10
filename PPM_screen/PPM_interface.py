@@ -9,7 +9,6 @@ import json
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 from PyQt5.uic import loadUiType
-#from PyQt5.QtCore import Qt
 from processing_module import RunProcessing
 from Image_registration_epics import App
 import PPM_widgets
@@ -21,7 +20,6 @@ import subprocess
 import shlex
 import os
 import time
-import threading
 
 
 local_path = os.path.dirname(os.path.abspath(__file__))
@@ -51,39 +49,29 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         print(path1)
         print(path2)
 
-        # button to start calculations
-        #self.runButton.clicked.connect(self.change_state)
-        self.alignmentButton.clicked.connect(self.align_focus)
+        # button for auto-alignment
+        self.alignmentButton.clicked.connect(self.run_align)
+        # button to update target position
         self.referenceButton.clicked.connect(self.update_reference)
-        #self.actionReset_Plots.triggered.connect(self.reset_plots)
-        #self.actionSave_Data.triggered.connect(self.save_data)
+        # menu item to open confluence page
         self.actionOpen_Confluence_Help.triggered.connect(self.open_help)
+        # button to apply AT2L0 transmission
         self.applyTransmissionButton.clicked.connect(self.apply_transmission)
-
+        # button to make a new plot
         self.plotButton.clicked.connect(self.make_new_plot)
         # method to save an image. Maybe replace and/or supplement this with image "recording" in the future
         self.actionSave.triggered.connect(self.save_image)
-        # open alignment screen for calculating center and pixel size
-        #self.actionAlignment_Screen.triggered.connect(self.run_alignment_screen)
-        #self.actionSave_with_hdf5_plugin.triggered.connect(self.save_hdf5)
+        # menu item to save images with hdf5 plugin and post to elog
         self.actionSave_with_hdf5_plugin.triggered.connect(self.capture_trajectory)
-
+        # menu item to post to elog
         self.actionPost_to_elog.triggered.connect(self.elog_post)
-        #self.trajectoryButton.clicked.connect(self.capture_trajectory)
-
-        #self.unhappyCheckBox.toggled.connect(self.unhappy_trajectory)
-        #self.happyCheckBox.toggled.connect(self.happy_trajectory)
-
-        # adjustment for amount of time to show on plots (this should be cleaned up later)
-        #self.plotRangeLineEdit.returnPressed.connect(self.set_time_range)
-        #self.wfsPlotRangeLineEdit.returnPressed.connect(self.set_time_range)
 
         # list of QAction objects for controlling the image orientation
         self.orientation_actions = [self.action0, self.action90, self.action180, self.action270, 
                 self.action0_flip, self.action90_flip, self.action180_flip, self.action270_flip]
 
+        # not sure why this was necessary...
         self.groupBox_3.setObjectName("CentroidStatsGroupBox")
-        #self.groupBox_5.setObjectName("WavefrontStatsGroupBox")
 
         # dictionary of QAction objects. Probably this could replace the above list eventually, but it works so won't
         # break it for now...
@@ -120,42 +108,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # beam with diameter of 2*FWHM
         self.imagerStats.connect_image(self.imageWidget)
 
-        # wavefront retrieval
-        #self.wavefrontWidget.change_lineout_label('Phase (rad)')
-
-        # connect levels to wavefront image
-        #self.wavefrontWidget.connect_levels(self.wavefrontLevelsWidget)
-        # connect wavefront image to crosshairs
-        #self.wavefrontWidget.connect_crosshairs(self.wavefrontCrosshairsWidget)
-
-        # add centroid plot
-        #self.centroid_plot = PPM_widgets.StripChart(self.centroidCanvas, u'Beam Centroid (\u03BCm)')
-
-        # labels and keys for plots
-        #labels = ['X', 'Y', 'X smoothed', 'Y smoothed']
-        #keys = ['x', 'y', 'x_smooth', 'y_smooth']
-
-        # plot for centroids
-        #self.centroid_plot.addSeries(keys, labels)
-
-        # add FWHM plot
-        #self.width_plot = PPM_widgets.StripChart(self.fwhmCanvas, u'Beam FWHM (\u03BCm)')
-        #self.width_plot.addSeries(keys, labels)
-
-        # add focus distance plot
-        #self.focus_plot = PPM_widgets.StripChart(self.focusCanvas, 'Focus position (mm)')
-        #self.focus_plot.addSeries(keys, labels)
-
-        # add rms error plot
-        #self.rms_plot = PPM_widgets.StripChart(self.rmsErrorCanvas, 'RMS wavefront error (rad)')
-        #self.rms_plot.addSeries(keys, labels)
-
-        # make a list of all the plots
-        #self.all_plots = [self.centroid_plot, self.width_plot, self.focus_plot, self.rms_plot]
-
-        # get hutch
+        # get hutch. Looks like previously was trying to get based on experiment name, hence the try/except
         try:
-            #self.hutch = check_output('get_curr_exp').decode('utf-8').replace('\n','')[:3]
             self.hutch = check_output('hostname').decode('utf-8').replace('\n','')[:3]
 
         except:
@@ -180,19 +134,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.imager_dict = {}
         for line in self.line_list:
             self.imager_dict[line] = [key for key in self.imager_info[line]]
-        # list of imagers with a wavefront sensor
-        #self.WFS_list = ['IM2K0', 'IM2L0', 'IM5K4', 'IM6K4', 'IM6K2', 'IM3K3', 'IM4L1']
-
-        # dictionary of wavefront sensor corresponding to imager
-        #self.WFS_dict = {
-        #    'IM2K0': 'PF1K0',
-        #    'IM2L0': 'PF1L0',
-        #    'IM5K4': 'PF1K4',
-        #    'IM6K4': 'PF2K4',
-        #    'IM6K2': 'PF1K2',
-        #    'IM3K3': 'PF1K3',
-        #    'IM4L1': 'PF1L1'
-        #}
 
         # initialize line combo box
         self.lineComboBox.addItems(self.line_list)
@@ -204,31 +145,19 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             if cam in self.imager_dict[key]:
                 self.line = key
                 valid_cam = True
-        #if self.line is None:
-        #    self.line = 'L0'
 
         line_index = self.line_list.index(self.line)
 
         # initialize imager list and imager
-        #self.imager_list = self.imager_dict['L0']
         self.imager_list = self.imager_dict[self.line]
         if valid_cam:
             self.imager = cam
-        #self.imager = self.imager_list[0]
         cam_index = self.imager_list.index(cam)
         print(cam_index)
-
-        # set wavefront sensor attribute
-        #self.wfs_name = None
-
-        # make sure this initializes properly
-        #self.imagerpv_list = self.imagerpv_dict[self.line]
-        #self.imagerpv = self.imagerpv_list[cam_index]
 
         self.curr_imager_dict = self.imager_info[self.line][self.imager]
 
         self.imagerpv = self.curr_imager_dict['prefix']
-        #self.imagerpv = self.imager_info[self.line][self.imager]['prefix']
 
         self.imagerComboBox.clear()
         self.imagerComboBox.addItems(self.imager_list)
@@ -236,12 +165,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # hdf5 object
         self.imager_h5 = ImagerHdf5(prefix=self.imagerpv, name=self.imager)
 
-        # disable wavefront checkbox by default since IM1L0 doesn't have a WFS
-        #self.wavefrontCheckBox.setEnabled(False)
-
-        # disable calibrate button unless processing is running
-        #self.calibrateButton.setEnabled(False)
-
+        # disable by default, then enable when imager gets changed
         self.alignmentButton.setEnabled(False)
 
         # more initialization...
@@ -273,65 +197,60 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.change_imager(cam_index)
 
     def open_help(self):
+        """
+        Method to open trajectory procedure confluence page
+        """
         url = "https://confluence.slac.stanford.edu/x/DqxiKg"
         cmd = f"/cds/home/opr/{self.hutch}opr/bin/google-chrome-workstation {url}"
 
         cmd_parts = shlex.split(cmd)
-        subprocess.Popen(cmd_parts)
+        # run browser in a separate thread
+        try:
+            subprocess.Popen(cmd_parts)
+        except:
+            print('no browser command available')
 
 
     def apply_transmission(self):
+        """
+        Method to apply transmission to AT2L0
+        """
+        # Disable button while requests are made
         self.applyTransmissionButton.setEnabled(False)
-        
+
+        # Object for doing this in a separate thread
         self.attenuate = Attenuate()
         self.attenuate.sig_finished.connect(self.attenuate_finished)
-
         self.attenuate_thread = QtCore.QThread()
-
         self.attenuate.moveToThread(self.attenuate_thread)
-
         self.attenuate_thread.started.connect(self.attenuate.run)
         self.attenuate_thread.start()
 
 
     def attenuate_finished(self):
+        """
+        Method to clean up after thread is executed, and re-enable button
+        """
         self.attenuate_thread.quit()
         self.attenuate_thread.wait()
         self.applyTransmissionButton.setEnabled(True)
 
-    #def enable_calibrate(self):
-    #    self.calibrateButton.setEnabled(True)
-
-    def unhappy_trajectory(self, checked):
-        if checked:
-            self.happyCheckBox.setChecked(False)
-            self.trajectoryButton.setEnabled(True)
-            self.trajectory_is_set = False
-        else:
-            if not self.happyCheckBox.isChecked():
-                self.trajectoryButton.setEnabled(False)
-
-    def happy_trajectory(self, checked):
-        if checked:
-            self.unhappyCheckBox.setChecked(False)
-            self.trajectoryButton.setEnabled(True)
-            self.trajectory_is_set = True
-        else:
-            if not self.unhappyCheckBox.isChecked():
-                self.trajectoryButton.setEnabled(False)
-
-    def align_focus(self):
-
+    def run_align(self):
+        """
+        Method to run alignment routine upon button click
+        """
         # disable alignment button
         self.alignmentButton.setEnabled(False)
 
+        # open message box to allow for cancellation
         self.alignment_message = QtWidgets.QMessageBox()
+        # Object to run alignment in a separate thread
         self.align = Alignment(self.curr_imager_dict)
+        # connect to alignment finished signal
         self.align.sig_finished.connect(self.alignment_finished)
 
         # initialize a new thread
         self.alignment_thread = QtCore.QThread()
-
         self.alignment_thread.finished.connect(self.enable_align)
         # move to new thread and connect to thread signals
         self.align.moveToThread(self.alignment_thread)
@@ -343,19 +262,19 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.alignment_message.setText("Attempting alignment")
         self.alignment_message.setWindowTitle("Alignment")
         self.alignment_message.setStandardButtons(QtWidgets.QMessageBox.Cancel)
-
-        #self.alignment_message.buttonClicked.connect(self.kill_sig.emit)
-        #self.alignment_message.buttonClicked.connect(self.align.cancel)
-        #self.alignment_message.buttonClicked.connect(self.enable_align)
         self.alignment_message.buttonClicked.connect(self.alignment_canceled)
 
+        # close message box when alignment is finished
         self.alignment_thread.finished.connect(self.alignment_message.close)
         # start alignment
         self.alignment_thread.start()
-
+        # open message box
         self.alignment_message.exec()
 
     def alignment_finished(self):
+        """
+        Method to cleanly quit the thread
+        """
         self.alignment_thread.quit()
         self.alignment_thread.wait()
         try:
@@ -365,22 +284,31 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.enable_align()
 
     def alignment_canceled(self):
+        """
+        Method to cancel alignment
+        """
         if self.alignment_thread is not None:
             self.alignment_thread.quit()
             self.alignment_thread.wait()
             self.enable_align()
 
     def enable_align(self):
-        #if self.wfs_name=='PF1K4':
+        """
+        Method to check if there is a control associated with this imager,
+        otherwise disable the button
+        """
         has_mirror = False
         try:
+            # check for mirror entry in json file
             if 'mirror' in self.curr_imager_dict.keys():
+                # only allow undulator control from mfx for now
                 if self.curr_imager_dict['mirror']!='und':
                     has_mirror = True
                 elif self.hutch=='mfx':
                     has_mirror = True
             else:
                 has_mirror = False
+            # enable alignment button, or not
             if has_mirror:
                 self.alignmentButton.setEnabled(True)
             else:
@@ -390,6 +318,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.alignmentButton.setEnabled(False)
 
     def make_new_plot(self):
+        """
+        'AMI-style' plot for various characteristics
+        """
         plot_window = PPM_widgets.NewPlot(self, self.data_handler.plot_keys())
         plot_window.show()
         self.plots.append(plot_window)
@@ -422,11 +353,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         Method to load the previously saved orientation. Defaults to no rotation if there hasn't been anything saved.
         """
         try:
-            # read the imagers.db file
-            #with open('/cds/home/s/seaberg/Commissioning_Tools/PPM_centroid/imagers.db') as json_file:
-            #    data = json.load(json_file)
-            # set orientation from the file
-            #self.orientation = data[self.imager]['orientation']
+            # get orientation from metadata loaded from json file
             self.orientation = self.imager_metadata[self.imager]['orientation']
         except KeyError:
             # catch the exception that the orientation hasn't been saved for this imager
@@ -464,6 +391,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             json.dump(data, outfile, indent=4)
 
     def capture_trajectory(self):
+        """
+        Method to take various actions to document the trajectory
+        """
         basename = self.get_basename()
 
         # save images
@@ -490,6 +420,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
                 image_name, data_name)
 
     def elog_post(self):
+        """
+        Method to make an elog post of the window, as well as print the beam stats
+        """
         self.elog_handler.post_stats(self.imager, self.imagerControls, self.imagerStats,
             self.photonEnergyLabel)
 
@@ -508,12 +441,14 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         date_str = str(timestamp.date())
         time_str = timestamp.time().isoformat(timespec='seconds')
         time_string = '%s_%s' % (date_str, time_str)
-        #basename = '%s_trajectory_%s' % (self.imager, time_string)
         basename = '%s_%s_%s' % (state, time_string, pointing)
         
         return basename
 
     def save_hdf5(self, basename=None):
+        """
+        Use hdf5 plugin to save images
+        """
         #if basename is None:
         if not isinstance(basename,str):
             basename = self.get_basename()
@@ -561,16 +496,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
                if isinstance(single_item, pg.graphicsItems.LabelItem.LabelItem):
                    single_item.setText(single_item.text, **legendLabelStyle)
 
-    def run_alignment_screen(self):
-        """
-        Method to open the alignment screen
-        """
-
-        cam_name = self.imagerpv
-
-        alignment_app = App(parent=self, imager=cam_name)
-        alignment_app.show()
-
     def change_line(self, index):
         """
         Method to change which beamline from which to select an imager.
@@ -606,7 +531,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # update imager
         self.imager = self.imager_list[index]
         self.imageGroupBox.setTitle(self.imager)
-        #self.wavefrontGroupBox.setTitle(self.imager)
         self.curr_imager_dict = self.imager_info[self.line][self.imager]
         if 'slit' in self.curr_imager_dict.keys():
             self.slitGroupBox.setTitle(self.curr_imager_dict['slit'])
@@ -621,27 +545,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
                 self.alignmentButton.setEnabled(False)
         else:
             self.alignmentButton.setEnabled(False)
-        # check if this imager has a wavefront sensor
-        #if self.imager in self.WFS_list:
-        #if 'wfs' in self.curr_imager_dict.keys():
-        #    self.wavefrontCheckBox.setEnabled(True)
-            # update wfs_name
-            #self.wfs_name = self.WFS_dict[self.imager]
-        #    self.wfs_name = self.curr_imager_dict['wfs']
-        #else:
-        #    self.wavefrontCheckBox.setChecked(False)
-        #    self.wavefrontCheckBox.setEnabled(False)
-            # no wavefront sensor associated with this imager
-        #    self.wfs_name = None
 
-        #self.imagerpv = self.imagerpv_list[index]
         self.imagerpv = self.curr_imager_dict['prefix']
-        if 'IM' in self.imagerpv:
-            motor_prefix = None
-            mms_num = None
-        else:
-            motor_prefix = self.curr_imager_dict['motor']
-            mms_num = self.curr_imager_dict['mms_num']
         self.imagerControls.change_imager(self.curr_imager_dict)
         self.slitControls.change_imager(self.curr_imager_dict)
         self.imagerStats.change_imager(self.imagerpv)
@@ -649,7 +554,6 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # hdf5 object
         self.imager_h5 = ImagerHdf5(prefix=self.imagerpv, name=self.imager)
 
-        #self.wfsControls.change_wfs(self.wfs_name)
         # uninitialize data handler
         self.data_handler.uninitialize()
         self.load_orientation()
@@ -671,33 +575,16 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.reset_sig.emit()
 
     def start_thread(self):
-        #self.runButton.setEnabled(False)
-
-        # check if we are going to calculate the wavefront. Set wfs_name to None if not.
-        #if self.wavefrontCheckBox.isChecked():
-        #    wfs_name = self.wfs_name
-        #else:
-        #    wfs_name = None
-
-        # get Talbot fraction. This will eventually be automated based on the photon energy and WFS state.
-        #try:
-        #    fraction = float(self.wfsControls.fractionLineEdit.text())
-        #except ValueError:
-        #    fraction = 1
-        
-        # initialize a new thread
-        #self.thread = QtCore.QThread()
 
         # initialize processing object. This really needs a dictionary as input...
-        
+
+        # ROI checkbox probably needs some work here
         if self.imagerStats.roiCheckBox.isChecked():
             self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
                                         threshold=self.imagerStats.get_threshold(), hutch=self.hutch,crossWidget=self.crosshairsWidget)
         else:
             self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
                                         threshold=self.imagerStats.get_threshold(), hutch=self.hutch)
-
-
 
         # connect processing object to plotting function
         self.processing.sig.connect(self.update_plots)
@@ -712,18 +599,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # update viewboxes based on FOV
         self.imageWidget.update_viewbox(width, height)
-        #if self.displayWidget.display_choice == 'Focus':
-        #    self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
-        #elif self.displayWidget.display_choice == 'Fourier transform':
-        #    FFT_width = 1/self.processing.PPM_object.dxm
-        #    self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
-        #else:
-            # this would eventually change for the FFT option
-        #    self.wavefrontWidget.update_viewbox(width, height)
 
         # update crosshair sizes
         self.crosshairsWidget.update_crosshair_width()
-        #self.wavefrontCrosshairsWidget.update_crosshair_width()
 
         # update width for circle displayed on beam
         self.imagerStats.update_width()
@@ -746,19 +624,9 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.thread.start()
         self.thread_quit = False
 
-        # change the button state
-        #self.runButton.setText('Stop')
-        #self.runButton.setEnabled(True)
-        # disable wavefront sensor checkbox until stop is pressed
-        #self.wavefrontCheckBox.setEnabled(False)
         self.imagerStats.roiCheckBox.setEnabled(False)
         self.imagerStats.thresholdLineEdit.setEnabled(False)
 
-        # disable imager selection until Stop is pressed
-        #self.lineComboBox.setEnabled(False)
-        #self.imagerComboBox.setEnabled(False)
-        #self.calibrateButton.setEnabled(True)
-        #self.alignmentButton.setEnabled(True)
         self.statusbar.showMessage('Starting acquisition...')
 
 
@@ -770,123 +638,21 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # check if "Run" was selected
         if run:
             print('starting')
-            #self.runButton.setEnabled(False)
             if not self.running:
                 self.start_thread()
                 self.running = True
             else:
                 self.running = True
 
-            ## check if we are going to calculate the wavefront. Set wfs_name to None if not.
-            ##if self.wavefrontCheckBox.isChecked():
-            ##    wfs_name = self.wfs_name
-            ##else:
-            ##    wfs_name = None
-
-            ## get Talbot fraction. This will eventually be automated based on the photon energy and WFS state.
-            ##try:
-            ##    fraction = float(self.wfsControls.fractionLineEdit.text())
-            ##except ValueError:
-            ##    fraction = 1
-            #
-            ## initialize a new thread
-            #self.thread = QtCore.QThread()
-
-            ## initialize processing object. This really needs a dictionary as input...
-            #
-            #if self.imagerStats.roiCheckBox.isChecked():
-            #    self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-            #                                threshold=self.imagerStats.get_threshold(), hutch=self.hutch,crossWidget=self.crosshairsWidget)
-            #else:
-            #    self.processing = RunProcessing(self.curr_imager_dict, self.data_handler, self.averageWidget,
-            #                                threshold=self.imagerStats.get_threshold(), hutch=self.hutch)
-
-
-
-            ## connect processing object to plotting function
-            #self.processing.sig.connect(self.update_plots)
-            #
-            ## connect to initialized signal
-            #self.processing.sig_initialized.connect(self.enable_run_button)
-
-            ## find out what the FOV of the screen is
-            #width, height = self.processing.get_FOV()
-            ## set the orientation for processing
-            #self.processing.set_orientation(self.orientation)
-
-            ## update viewboxes based on FOV
-            #self.imageWidget.update_viewbox(width, height)
-            ##if self.displayWidget.display_choice == 'Focus':
-            ##    self.wavefrontWidget.update_viewbox(self.displayWidget.FOV, self.displayWidget.FOV)
-            ##elif self.displayWidget.display_choice == 'Fourier transform':
-            ##    FFT_width = 1/self.processing.PPM_object.dxm
-            ##    self.wavefrontWidget.update_viewbox(FFT_width,FFT_width)
-            ##else:
-            #    # this would eventually change for the FFT option
-            ##    self.wavefrontWidget.update_viewbox(width, height)
-
-            ## update crosshair sizes
-            #self.crosshairsWidget.update_crosshair_width()
-            ##self.wavefrontCrosshairsWidget.update_crosshair_width()
-
-            ## update width for circle displayed on beam
-            #self.imagerStats.update_width()
-
-            ## initialize a new thread
-            #self.thread = QtCore.QThread()
-
-            ## move to new thread and connect to thread signals
-            #self.processing.moveToThread(self.thread)
-            #self.thread.started.connect(self.processing.run)
-            #self.thread.finished.connect(self.enable_run_button)
-            #self.kill_sig.connect(self.processing.stop)
-            #self.reset_sig.connect(self.processing.reset_plots)
-            #self.processing.sig_finished.connect(self.quit_thread)
-            #self.save_sig.connect(self.processing.save_data)
-            #
-            #print('starting thread')
-            ## start processing
-            #self.thread.start()
-
-            ## change the button state
-            #self.runButton.setText('Stop')
-            ##self.runButton.setEnabled(True)
-            ## disable wavefront sensor checkbox until stop is pressed
-            ##self.wavefrontCheckBox.setEnabled(False)
-            #self.imagerStats.roiCheckBox.setEnabled(False)
-            #self.imagerStats.thresholdLineEdit.setEnabled(False)
-
-            ## disable imager selection until Stop is pressed
-            ##self.lineComboBox.setEnabled(False)
-            ##self.imagerComboBox.setEnabled(False)
-            ##self.calibrateButton.setEnabled(True)
-            ##self.alignmentButton.setEnabled(True)
-            #self.statusbar.showMessage('Starting acquisition...')
-
         # check if "Stop" was selected
         else:
             print('stopping')
-            #self.runButton.setEnabled(False)
-            # stop processing and quit the thread
-            #self.thread.quit()
-            #self.thread.wait()
             self.kill_sig.emit()
             self.statusbar.showMessage('Stopping acquisition...')
 
-            # update the button to be ready to "Run"
-            #self.runButton.setText('Run')
-            #self.calibrateButton.setEnabled(False)
             self.alignmentButton.setEnabled(False)
-            # re-enable wavefront sensor checkbox if imager is has a wavefront sensor
-            #if self.imager in self.WFS_list:
-            #if 'wfs' in self.curr_imager_dict.keys():
 
-            #    self.wavefrontCheckBox.setEnabled(True)
-
-            #self.runButton.setEnabled(True)
             # re-enable imager selection
-            #self.lineComboBox.setEnabled(True)
-            #self.imagerComboBox.setEnabled(True)
             self.imagerStats.roiCheckBox.setEnabled(True)
             self.imagerStats.thresholdLineEdit.setEnabled(True)
 
@@ -1000,25 +766,17 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         data_dict: dict
             This is where all the data to display is stored
         """
-       
-        #time1 = time.time()
+
         data_dict = self.data_handler.data_dict
 
         # get validity
         centroid_validity = data_dict['centroid_is_valid']
-        wavefront_validity = data_dict['wavefront_is_valid']
 
         # check if the most recent measurement was valid
         if centroid_validity[-1]:
             self.groupBox_3.setStyleSheet("QGroupBox#CentroidStatsGroupBox { border: 2px solid green;}")
         else:
             self.groupBox_3.setStyleSheet("QGroupBox#CentroidStatsGroupBox { border: 2px solid red;}")
-
-        # check if the most recent measurement was valid
-        #if wavefront_validity[-1]:
-        #    self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid green;}")
-        #else:
-        #    self.groupBox_5.setStyleSheet("QGroupBox#WavefrontStatsGroupBox { border: 2px solid red;}")
 
         x = data_dict['x']
         y = data_dict['y']
@@ -1030,44 +788,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         fit_x = data_dict['fit_x']
         fit_y = data_dict['fit_y']
 
-        # wfs widget plots
-        x_prime = data_dict['x_prime']
-        y_prime = data_dict['y_prime']
-        x_res = data_dict['x_res']
-        y_res = data_dict['y_res']
-        x_res_fit = np.zeros_like(x_res)
-        y_res_fit = np.zeros_like(y_res)
-
         # update main image and lineouts
         self.imageWidget.update_plots(image_data, x, y, xprojection, yprojection, fit_x, fit_y, 
                 xlineout_data=xlineout, ylineout_data=ylineout)
 
-        # update wavefront tab
-        #if self.wavefrontCheckBox.isChecked():
-
-            # get focus coordinates
-        #    xf = data_dict['xf']
-
-            # check what is supposed to be displayed. Would be nice to also clean this up
-        #    if self.displayWidget.display_choice == 'Focus':
-        #        xline = data_dict['focus_horizontal']
-        #        yline = data_dict['focus_vertical']
-        #        self.wavefrontWidget.update_plots(data_dict['focus'], xf, xf, xline, yline, xline, yline)
-        #    elif self.displayWidget.display_choice == 'Fourier transform':
-        #        self.wavefrontWidget.update_plots(data_dict['F0'], x, y, xprojection, yprojection, fit_x, fit_y)
-        #    elif self.displayWidget.display_choice == 'Phase':
-        #        self.wavefrontWidget.update_plots(data_dict['wave'], x_prime, y_prime, x_res, y_res, x_res, y_res)
-
-            # update wavefront tab stripchart plots
-        #    self.focus_plot.update_plots(data_dict['timestamps'], x=data_dict['z_x'], y=data_dict['z_y'], x_smooth=data_dict['z_x_smooth'], y_smooth=data_dict['z_y_smooth'])
-        #    self.rms_plot.update_plots(data_dict['timestamps'], x=data_dict['coma_x'], y=data_dict['coma_y'], x_smooth=data_dict['rms_x_smooth'], y_smooth=data_dict['rms_y_smooth'])
-
-        #    self.wfsStats.update_stats(data_dict)
-
-        # update centroid plots
-        #self.centroid_plot.update_plots(data_dict['timestamps'], x=data_dict['cx'], y=data_dict['cy'], x_smooth=data_dict['cx_smooth'], y_smooth=data_dict['cy_smooth'])
-        #self.width_plot.update_plots(data_dict['timestamps'], x=data_dict['wx'], y=data_dict['wy'], x_smooth=data_dict['wx_smooth'], y_smooth=data_dict['wy_smooth'])
-
+        # print refresh rate
         self.label.setText(data_dict['tx'])
 
         # update stats values
@@ -1075,5 +800,3 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         for plot in self.plots:
             plot.update_plot(data_dict, self.data_handler.plot_keys())
-        #time2 = time.time()
-        #print('plot update: {}'.format(time2-time1))
