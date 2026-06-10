@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1360</width>
-    <height>1268</height>
+    <width>1200</width>
+    <height>919</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -272,6 +272,9 @@
             <property name="channel" stdset="0">
              <string>ca://AT2L0:CALC:SYS:ActualTransmission_RBV</string>
             </property>
+            <property name="displayFormat" stdset="0">
+             <enum>PyDMLabel::Exponential</enum>
+            </property>
            </widget>
           </item>
           <item>
@@ -281,6 +284,9 @@
             </property>
             <property name="channel" stdset="0">
              <string>ca://AT2L0:CALC:SYS:DesiredTransmission</string>
+            </property>
+            <property name="displayFormat" stdset="0">
+             <enum>PyDMLineEdit::Exponential</enum>
             </property>
            </widget>
           </item>
@@ -352,6 +358,12 @@
       <layout class="QHBoxLayout" name="horizontalLayout_4">
        <item>
         <widget class="QFrame" name="frame_3">
+         <property name="minimumSize">
+          <size>
+           <width>200</width>
+           <height>0</height>
+          </size>
+         </property>
          <property name="frameShape">
           <enum>QFrame::StyledPanel</enum>
          </property>
@@ -400,8 +412,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1360</width>
-     <height>29</height>
+     <width>1200</width>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">

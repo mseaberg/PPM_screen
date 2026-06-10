@@ -359,15 +359,22 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def enable_align(self):
         #if self.wfs_name=='PF1K4':
+        has_mirror = False
         try:
             if 'mirror' in self.curr_imager_dict.keys():
-                has_mirror = True
+                if self.curr_imager_dict['mirror']!='und':
+                    has_mirror = True
+                elif self.hutch=='mfx':
+                    has_mirror = True
             else:
                 has_mirror = False
             if has_mirror:
                 self.alignmentButton.setEnabled(True)
+            else:
+                self.alignmentButton.setEnabled(False)
         except:
             print('image_info.json file is incomplete')
+            self.alignmentButton.setEnabled(False)
 
     def make_new_plot(self):
         plot_window = PPM_widgets.NewPlot(self, self.data_handler.plot_keys())
@@ -592,6 +599,15 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
             self.slitGroupBox.setTitle(self.curr_imager_dict['slit'])
         else:
             self.slitGroupBox.setTitle('No associated slits')
+        if 'mirror' in self.curr_imager_dict.keys():
+            if self.curr_imager_dict['mirror']!='und':
+                self.alignmentButton.setEnabled(True)
+            elif self.hutch=='mfx':
+                self.alignmentButton.setEnabled(True)
+            else:
+                self.alignmentButton.setEnabled(False)
+        else:
+            self.alignmentButton.setEnabled(False)
         # check if this imager has a wavefront sensor
         #if self.imager in self.WFS_list:
         #if 'wfs' in self.curr_imager_dict.keys():

@@ -24,6 +24,9 @@ class Alignment(QtCore.QObject):
         self.error_y = None
         self.new_error_y = None
         self.calib_y = None
+        self.mirror_start = None
+        self.undx_total = None
+        self.undy_total = None
 
         if mirror_prefix == 'und':
             self.undulator = UndPointDelta2D(prefix="MFX:USER:MCC:UND",name='undulator')
@@ -82,6 +85,7 @@ class Alignment(QtCore.QObject):
             # move mirror slightly
             print('moving mirror')
             print(self.mirror.pitch.get())
+            self.mirror_start = self.mirror.pitch.get()
             self.mirror.pitch.mvr(1, wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target
@@ -103,18 +107,28 @@ class Alignment(QtCore.QObject):
             # print('alignment completed')
             #
             # self.sig_finished.emit()
+        else:
+            self.sig_finished.emit()
 
     def _update(self):
         if self.running:
 
+            if np.isnan(self.new_error):
+                print('Beam down? Canceling...')
+                self.mirror.pitch.mv(self.mirror_start, wait=True)
+                self.sig_finished.emit()
+                return
             try:
                 adj = -self.new_error / self.calib * 0.9
             except ZeroDivisionError:
                 print('problem with calibration')
+                self.mirror.pitch.mv(self.mirror_start, wait=True)
                 self.sig_finished.emit()
                 return
 
             print(adj)
+            if np.abs(adj)>2:
+                adj = np.sign(adj)*2
             self.mirror.pitch.mvr(adj, wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error = cen_x - self.x_target
@@ -125,6 +139,10 @@ class Alignment(QtCore.QObject):
                 print('alignment completed')
 
                 self.sig_finished.emit()
+        else:
+            print('Alignment canceled, moving back to start')
+            self.mirror.pitch.mv(self.mirror_start, wait=True)
+            self.sig_finished.emit()
 
     def _und_run(self):
         # need to get some updates from the RunProcessing object to see where we are currently. We also need to
@@ -162,12 +180,18 @@ class Alignment(QtCore.QObject):
             # print('alignment completed')
             #
             # self.sig_finished.emit()
+        else:
+            self.sig_finished.emit()
 
     def _und_update(self):
         if self.running:
+            if np.isnan(self.new_error):
+                print('Beam down? Canceling...')
+                self.sig_finished.emit()
+                return
             try:
-                adj = -self.new_error / self.calib
-                adj_y = -self.new_error_y / self.calib_y
+                adj = -self.new_error / self.calib * 0.9
+                adj_y = -self.new_error_y / self.calib_y * 0.9
             except ZeroDivisionError:
                 print('problem with calibration')
                 self.sig_finished.emit()
@@ -190,6 +214,8 @@ class Alignment(QtCore.QObject):
                 print('alignment completed')
 
                 self.sig_finished.emit()
+        else:
+            self.sig_finished.emit()
 
     def cancel(self):
         self.running = False
