@@ -54,6 +54,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # button to start calculations
         #self.runButton.clicked.connect(self.change_state)
         self.alignmentButton.clicked.connect(self.align_focus)
+        self.referenceButton.clicked.connect(self.update_reference)
         #self.actionReset_Plots.triggered.connect(self.reset_plots)
         #self.actionSave_Data.triggered.connect(self.save_data)
         self.actionOpen_Confluence_Help.triggered.connect(self.open_help)
@@ -239,7 +240,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         #self.wavefrontCheckBox.setEnabled(False)
 
         # disable calibrate button unless processing is running
-        self.calibrateButton.setEnabled(False)
+        #self.calibrateButton.setEnabled(False)
+
         self.alignmentButton.setEnabled(False)
 
         # more initialization...
@@ -297,8 +299,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.attenuate_thread.wait()
         self.applyTransmissionButton.setEnabled(True)
 
-    def enable_calibrate(self):
-        self.calibrateButton.setEnabled(True)
+    #def enable_calibrate(self):
+    #    self.calibrateButton.setEnabled(True)
 
     def unhappy_trajectory(self, checked):
         if checked:
@@ -873,7 +875,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
             # update the button to be ready to "Run"
             #self.runButton.setText('Run')
-            self.calibrateButton.setEnabled(False)
+            #self.calibrateButton.setEnabled(False)
             self.alignmentButton.setEnabled(False)
             # re-enable wavefront sensor checkbox if imager is has a wavefront sensor
             #if self.imager in self.WFS_list:
@@ -978,6 +980,14 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         event.accept()
         #QtCore.QTimer.singleShot(1000, event.accept)
         #event.accept()
+
+    def update_reference(self):
+        data_dict = self.data_handler.data_dict
+        try:
+            data_dict['cx_ref'].put(float(self.imagerStats.xCentroidLineEdit.text()))
+            data_dict['cy_ref'].put(float(self.imagerStats.yCentroidLineEdit.text()))
+        except:
+            print('unable to update reference')
 
     def update_plots(self):
         """

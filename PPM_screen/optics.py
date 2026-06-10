@@ -568,11 +568,11 @@ class PPM_Device(PPM):
             self.dx = dx
         else:
             print('pixel size is not calibrated')
-        cx_target = PV(self.cam_name + 'X_RTCL_CTR').get()
-        if cx_target is not None:
+        cx_target = PV(self.cam_name + 'X_RTCL_CTR')
+        if cx_target.get() is not None:
             self.cx_target = cx_target
-        cy_target = PV(self.cam_name + 'Y_RTCL_CTR').get()
-        if cy_target is not None:
+        cy_target = PV(self.cam_name + 'Y_RTCL_CTR')
+        if cy_target.get() is not None:
             self.cy_target = cy_target
 
         print('{} um pixel'.format(self.dx))

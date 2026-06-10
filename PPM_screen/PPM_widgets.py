@@ -435,8 +435,12 @@ class ImagerStats(QImagerStats, Ui_ImagerStats):
         wx_mean = np.mean(wx)
         wy_mean = np.mean(wy)
 
-        xRef = data['cx_ref']
-        yRef = data['cy_ref']
+        try:
+            xRef = data['cx_ref'].get()
+            yRef = data['cy_ref'].get()
+        except:
+            xRef = 0.0
+            yRef = 0.0
 
         self.xCentroidLineEdit.setText('%.1f' % cx_mean)
         self.yCentroidLineEdit.setText('%.1f' % cy_mean)
