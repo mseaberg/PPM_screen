@@ -17,6 +17,8 @@ from imager_data import DataHandler
 from motion_module import Alignment, Attenuate
 from io_module import ImagerHdf5, ElogHandler
 from subprocess import check_output
+import subprocess
+import shlex
 import os
 import time
 import threading
@@ -52,15 +54,16 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # button to start calculations
         #self.runButton.clicked.connect(self.change_state)
         self.alignmentButton.clicked.connect(self.align_focus)
-        self.actionReset_Plots.triggered.connect(self.reset_plots)
-        self.actionSave_Data.triggered.connect(self.save_data)
+        #self.actionReset_Plots.triggered.connect(self.reset_plots)
+        #self.actionSave_Data.triggered.connect(self.save_data)
+        self.actionOpen_Confluence_Help.triggered.connect(self.open_help)
         self.applyTransmissionButton.clicked.connect(self.apply_transmission)
 
         self.plotButton.clicked.connect(self.make_new_plot)
         # method to save an image. Maybe replace and/or supplement this with image "recording" in the future
         self.actionSave.triggered.connect(self.save_image)
         # open alignment screen for calculating center and pixel size
-        self.actionAlignment_Screen.triggered.connect(self.run_alignment_screen)
+        #self.actionAlignment_Screen.triggered.connect(self.run_alignment_screen)
         #self.actionSave_with_hdf5_plugin.triggered.connect(self.save_hdf5)
         self.actionSave_with_hdf5_plugin.triggered.connect(self.capture_trajectory)
 
@@ -266,6 +269,14 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.running = False
         self.thread_quit = True
         self.change_imager(cam_index)
+
+    def open_help(self):
+        url = "https://confluence.slac.stanford.edu/x/DqxiKg"
+        cmd = f"/cds/home/opr/{self.hutch}opr/bin/google-chrome-workstation {url}"
+
+        cmd_parts = shlex.split(cmd)
+        subprocess.Popen(cmd_parts)
+
 
     def apply_transmission(self):
         self.applyTransmissionButton.setEnabled(False)

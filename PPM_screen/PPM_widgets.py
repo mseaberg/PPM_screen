@@ -208,7 +208,7 @@ class ImagerControls(QImager, Ui_Imager):
         self.imager_prefix = self.yStateReadback.channel[5:16]
         self.motor_prefix = None
 
-        self.nominalButton.clicked.connect(self.restore_nominal)
+        #self.nominalButton.clicked.connect(self.restore_nominal)
 
         self.nominal_controls = {
                 'AcquireTime': self.acquireLineEdit
