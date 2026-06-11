@@ -234,8 +234,20 @@
          <property name="precisionFromPV" stdset="0">
           <bool>false</bool>
          </property>
+         <property name="alarmSensitiveContent" stdset="0">
+          <bool>false</bool>
+         </property>
+         <property name="alarmSensitiveBorder" stdset="0">
+          <bool>true</bool>
+         </property>
+         <property name="PyDMToolTip" stdset="0">
+          <string/>
+         </property>
          <property name="channel" stdset="0">
-          <string>ca://PMPS:KFE:PE:UND:CurrentPhotonEnergy_RBV</string>
+          <string>ca://PMPS:LFE:PE:UND:CurrentPhotonEnergy_RBV</string>
+         </property>
+         <property name="enableRichText" stdset="0">
+          <bool>false</bool>
          </property>
          <property name="buddy">
           <cstring></cstring>
