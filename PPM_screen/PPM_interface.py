@@ -748,12 +748,23 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         #event.accept()
 
     def update_reference(self):
-        data_dict = self.data_handler.data_dict
-        try:
-            data_dict['cx_ref'].put(float(self.imagerStats.xCentroidLineEdit.text()))
-            data_dict['cy_ref'].put(float(self.imagerStats.yCentroidLineEdit.text()))
-        except:
-            print('unable to update reference')
+        
+        reply = QtWidgets.QMessageBox.question(self,
+                'Update Reference Position',
+                'Are you sure you wish to update the reference position?',
+                QtWidgets.QMessageBox.Yes | 
+                QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No)
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            data_dict = self.data_handler.data_dict
+            try:
+                data_dict['cx_ref'].put(float(self.imagerStats.xCentroidLineEdit.text()))
+                data_dict['cy_ref'].put(float(self.imagerStats.yCentroidLineEdit.text()))
+            except:
+                print('unable to update reference')
+        else:
+            print('Reference not updated')
 
     def update_plots(self):
         """
