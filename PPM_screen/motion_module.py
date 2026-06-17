@@ -27,11 +27,16 @@ class Alignment(QtCore.QObject):
         self.mirror = Mirror(mirror_prefix)
         self.undulator = None
         self.calibrate = calibrate
+        # check if calibration exists in the file
         if 'calib_x' in curr_imager_dict.keys():
             self.calib_x = curr_imager_dict['calib_x']
+            # force calibration if calib_x=0
+            if self.calib_x == 0:
+                self.calibrate = True
         else:
             self.calib_x = 0
             self.calibrate = True
+        # check for calib_y in file
         if 'calib_y' in curr_imager_dict.keys():
             self.calib_y = curr_imager_dict['calib_y']
         else:

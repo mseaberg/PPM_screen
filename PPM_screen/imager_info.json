@@ -7,8 +7,8 @@
     "IM3L0": {
       "prefix": "IM3L0:PPM:",
       "mirror": "und",
-      "calib_x": 2,
-      "calib_y": 2
+      "calib_x": 0,
+      "calib_y": 0
     },
     "IM4L0": {
       "prefix": "IM4L0:XTES:"
@@ -17,7 +17,7 @@
       "prefix": "IM5L0:PPM:",
       "mirror": "MR2L0:HOMS",
       "slit": "SL3L0:SCATTER:",
-      "calib_x": 60,
+      "calib_x": 0,
       "calib_y": 0
     },
     "xrt_yag1": {
@@ -26,7 +26,7 @@
       "mirror": "MR2L0:HOMS",
       "mms_num": "08",
       "slit": "HXX:UM6:JAWS:",
-      "calib_x": 120,
+      "calib_x": 0,
       "calib_y": 0
     },
     "xrt_yag1b": {
@@ -40,7 +40,7 @@
       "mirror": "MR2L0:HOMS",
       "mms_num": "09",
       "slit": "HFX:DG2:JAWS:",
-      "calib_x": 400,
+      "calib_x": 0,
       "calib_y": 0
     },
     "xrt_yag3": {
@@ -49,7 +49,7 @@
       "mirror": "MR2L0:HOMS",
       "mms_num": "08",
       "slit": "HFX:DG3:JAWS:",
-      "calib_x": 460,
+      "calib_x": 0,
       "calib_y": 0
     }
   },
@@ -60,7 +60,7 @@
       "mms_num": "08",
       "slit": "CXI:DG1:JAWS:",
       "mirror": "MR2L0:HOMS",
-      "calib_x": 500,
+      "calib_x": 0,
       "calib_y": 0
     }
   },
@@ -81,7 +81,7 @@
       "mms_num": "17",
       "mirror": "MR1L3:HOMS",
       "slit": "XCS:DG3:JAWS:",
-      "calib_x": -320,
+      "calib_x": 0,
       "calib_y": 0
     },
     "xcs_yag5": {
@@ -97,7 +97,7 @@
       "motor": "MEC:HXM:",
       "mms_num": "08",
       "mirror": "MR1L4:HOMS",
-      "calib_x": 320,
+      "calib_x": 0,
       "calib_y": 0
     }
   },
@@ -107,7 +107,7 @@
       "motor": "MFX:DIA:",
       "mms_num": "04",
       "mirror": "MR1L4:HOMS",
-      "calib_x": 320,
+      "calib_x": 0,
       "calib_y": 0
     },
     "mfx_dg1_yag": {
@@ -116,7 +116,7 @@
       "mms_num": "09",
       "mirror": "MR1L4:HOMS",
       "slit": "MFX:DG1:JAWS:",
-      "calib_x": 350,
+      "calib_x": 0,
       "calib_y": 0
     }
 
