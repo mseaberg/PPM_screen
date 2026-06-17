@@ -6,23 +6,28 @@
     },
     "IM3L0": {
       "prefix": "IM3L0:PPM:",
-      "mirror": "und"
+      "mirror": "und",
+      "calib_x": 2,
+      "calib_y": 2
     },
     "IM4L0": {
-      "prefix": "IM4L0:XTES:",
-      "mirror": "MR2L0:HOMS"
+      "prefix": "IM4L0:XTES:"
     },
     "IM5L0": {
       "prefix": "IM5L0:PPM:",
       "mirror": "MR2L0:HOMS",
-      "slit": "SL3L0:SCATTER:"
+      "slit": "SL3L0:SCATTER:",
+      "calib_x": 60,
+      "calib_y": 0
     },
     "xrt_yag1": {
       "prefix": "XRT:DG1:GIGE:01:",
       "motor": "HXX:UM6:",
       "mirror": "MR2L0:HOMS",
       "mms_num": "08",
-      "slit": "HXX:UM6:JAWS:"
+      "slit": "HXX:UM6:JAWS:",
+      "calib_x": 120,
+      "calib_y": 0
     },
     "xrt_yag1b": {
       "prefix": "XRT:HXM:GIGE:01:",
@@ -34,14 +39,18 @@
       "motor": "HFX:DG2:",
       "mirror": "MR2L0:HOMS",
       "mms_num": "09",
-      "slit": "HFX:DG2:JAWS:"
+      "slit": "HFX:DG2:JAWS:",
+      "calib_x": 400,
+      "calib_y": 0
     },
     "xrt_yag3": {
       "prefix": "XRT:DG3:GIGE:01:",
       "motor": "HFX:DG3:",
       "mirror": "MR2L0:HOMS",
       "mms_num": "08",
-      "slit": "HFX:DG3:JAWS:"
+      "slit": "HFX:DG3:JAWS:",
+      "calib_x": 460,
+      "calib_y": 0
     }
   },
   "CXI": {
@@ -50,7 +59,9 @@
       "motor": "CXI:DG1:",
       "mms_num": "08",
       "slit": "CXI:DG1:JAWS:",
-      "mirror": "MR2L0:HOMS"
+      "mirror": "MR2L0:HOMS",
+      "calib_x": 500,
+      "calib_y": 0
     }
   },
   "XPP": {
@@ -69,7 +80,9 @@
       "motor": "XCS:DG3:",
       "mms_num": "17",
       "mirror": "MR1L3:HOMS",
-      "slit": "XCS:DG3:JAWS:"
+      "slit": "XCS:DG3:JAWS:",
+      "calib_x": -320,
+      "calib_y": 0
     },
     "xcs_yag5": {
       "prefix": "XCS:GIGE:04:",
@@ -83,7 +96,9 @@
       "prefix": "MEC:GIGE:14:",
       "motor": "MEC:HXM:",
       "mms_num": "08",
-      "mirror": "MR1L4:HOMS"
+      "mirror": "MR1L4:HOMS",
+      "calib_x": 320,
+      "calib_y": 0
     }
   },
   "MFX": {
@@ -91,14 +106,18 @@
       "prefix": "MFX:GIGE:DIA:YAG:",
       "motor": "MFX:DIA:",
       "mms_num": "04",
-      "mirror": "MR1L4:HOMS"
+      "mirror": "MR1L4:HOMS",
+      "calib_x": 320,
+      "calib_y": 0
     },
     "mfx_dg1_yag": {
       "prefix": "MFX:GIGE:DG1:YAG:",
       "motor": "MFX:DG1:",
       "mms_num": "09",
       "mirror": "MR1L4:HOMS",
-      "slit": "MFX:DG1:JAWS:"
+      "slit": "MFX:DG1:JAWS:",
+      "calib_x": 350,
+      "calib_y": 0
     }
 
   }
