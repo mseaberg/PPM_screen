@@ -29,7 +29,7 @@ class Alignment(QtCore.QObject):
         self.calibrate = calibrate
         # check if calibration exists in the file
         if 'calib_x' in curr_imager_dict.keys():
-            self.calib_x = curr_imager_dict['calib_x']
+            self.calib_x = float(curr_imager_dict['calib_x'])
             # force calibration if calib_x=0
             if self.calib_x == 0:
                 self.calibrate = True
@@ -38,7 +38,7 @@ class Alignment(QtCore.QObject):
             self.calibrate = True
         # check for calib_y in file
         if 'calib_y' in curr_imager_dict.keys():
-            self.calib_y = curr_imager_dict['calib_y']
+            self.calib_y = float(curr_imager_dict['calib_y'])
         else:
             self.calib_y = 0
             self.calibrate = True
