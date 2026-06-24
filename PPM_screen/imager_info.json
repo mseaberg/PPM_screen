@@ -99,6 +99,12 @@
       "mms_num": "09",
       "mirror": "MR1L4:HOMS",
       "slit": "MFX:DG1:JAWS:"
+    },
+    "mfx_dg2_yag": {
+      "prefix": "MFX:GIGE:DG2:YAG:",
+      "motor": "MFX:DG2:",
+      "mms_num": "08",
+      "slit": "MFX:DG2:JAWS:US:"
     }
 
   }
