@@ -14,7 +14,7 @@ class Alignment(QtCore.QObject):
 
     sig_finished = QtCore.pyqtSignal()
 
-    def __init__(self, imager_name: str, curr_imager_dict: dict, calibrate=False):
+    def __init__(self, imager_name: str, curr_imager_dict: dict, calibrate=False, hutch=None):
         """
         Parameters:
             curr_imager_dict: dict loaded from json file
@@ -39,6 +39,9 @@ class Alignment(QtCore.QObject):
         # check for calib_y in file
         if 'calib_y' in curr_imager_dict.keys():
             self.calib_y = float(curr_imager_dict['calib_y'])
+            # calibrate if missing for mfx
+            if self.calib_y == 0 and self.hutch == 'mfx':
+                self.calibrate = True
         else:
             self.calib_y = 0
             self.calibrate = True
@@ -49,6 +52,7 @@ class Alignment(QtCore.QObject):
         self.mirror_start = None
         self.undx_total = None
         self.undy_total = None
+        self.hutch = hutch
 
         if mirror_prefix == 'und':
             # relative undulator pointing object
@@ -100,6 +104,8 @@ class Alignment(QtCore.QObject):
         self.running = True
         if self.undulator is not None:
             self._und_run()
+        elif self.hutch=='mfx':
+            self._combined_run()
         else:
             self._run()
 
@@ -146,7 +152,6 @@ class Alignment(QtCore.QObject):
             self._update()
         else:
             self.sig_finished.emit()
-
 
     def _update(self):
         """
@@ -280,6 +285,118 @@ class Alignment(QtCore.QObject):
 
                 self.sig_finished.emit()
         else:
+            self.sig_finished.emit()
+
+    def _combined_run(self):
+        """
+        Entry point for mirror adjustment
+        """
+
+        if self.running:
+
+            # check centroid before moving anything
+            cen_x, cen_y = self.get_centroid()
+            print(cen_x - self.x_target)
+
+            self.error_x = cen_x - self.x_target
+            self.error_y = cen_y - self.y_target
+            # move mirror slightly for calibration
+
+            self.mirror_start = self.mirror.pitch.get()
+
+            if self.calibrate:
+                print('moving mirror positive')
+                self.mirror.pitch.mvr(1, wait=True)
+                cen_x, cen_y = self.get_centroid()
+                self.new_error_x = cen_x - self.x_target
+                # calculate um/urad
+                calib1 = (self.new_error_x - self.error_x) / 1
+
+                # update old position error
+                self.error_x = np.copy(self.new_error_x)
+
+                print('moving mirror negative')
+                self.mirror.pitch.mvr(-1, wait=True)
+                cen_x, cen_y = self.get_centroid()
+                self.new_error_x = cen_x - self.x_target
+                # calculate um/urad
+                calib2 = (self.new_error_x - self.error_x) / (-1)
+                self.calib_x = (calib1+calib2)/2
+                print('calibration: {} um/urad'.format(self.calib_x))
+                # save the calibration to file
+
+                print('moving undulator positive')
+                self.undulator.move(position=(0, 20), wait=True)
+                cen_x, cen_y = self.get_centroid()
+                self.new_error_y = cen_y - self.y_target
+                # calculate calibration for vertical
+                calib_y1 = (self.new_error_y - self.error_y) / 20
+
+                # update old position error
+                self.error_y = np.copy(self.new_error_y)
+
+                print('moving undulator negative')
+                self.undulator.move(position=(0, -20), wait=True)
+                cen_x, cen_y = self.get_centroid()
+                self.new_error_y = cen_y - self.y_target
+                # calculate calibration for vertical
+                calib_y2 = (self.new_error_y - self.error_y) / (-20)
+                self.calib_y = (calib_y1 + calib_y2) / 2
+
+                self.save_calibration()
+            else:
+                self.new_error_x = np.copy(self.error_x)
+                self.new_error_y = np.copy(self.error_y)
+            # start loop for mirror adjustment
+            self._update()
+        else:
+            self.sig_finished.emit()
+
+    def _combined_update(self):
+        """
+        Loop method for adjusting mirror pointing
+        """
+        # only run if not cancelled
+        if self.running:
+            # check if beam centroid is valid or not. Cancel if not
+            if np.isnan(self.new_error_x):
+                print('Beam down? Canceling...')
+                self.mirror.pitch.mv(self.mirror_start, wait=True)
+                self.sig_finished.emit()
+                return
+            try:
+                adj = -self.new_error_x/ self.calib_x* 0.9
+                adj_y = -self.new_error_y / self.calib_y * 0.9
+            except ZeroDivisionError:
+                print('problem with calibration')
+                self.mirror.pitch.mv(self.mirror_start, wait=True)
+                self.sig_finished.emit()
+                return
+
+            print('Adjusting {} by {}'.format(self.mirror.name, adj))
+            print('Adjusting undulators vertically by {}um'.format(adj_y))
+            # ensure adjustments aren't too large
+            if np.abs(adj)>2:
+                adj = np.sign(adj)*2
+            if np.abs(adj_y)>50:
+                adj_y = np.sign(adj_y)*50
+            self.mirror.pitch.mvr(adj, wait=True)
+            self.undulator.move((0,adj_y),wait=True)
+            cen_x, cen_y = self.get_centroid()
+            self.new_error_x = cen_x - self.x_target
+            self.new_error_y = cen_y - self.y_target
+            print('Error from X target: {}'.format(self.new_error_x))
+            print('Error from Y target: {}um'.format(self.new_error_y))
+            # make another adjustment if we are more than 20um from the target
+            if np.abs(self.new_error_x)>20 or np.abs(self.new_error_y)>20:
+                QtCore.QTimer.singleShot(200, self._update)
+            else:
+                print('alignment completed')
+
+                self.sig_finished.emit()
+        else:
+            print('Alignment canceled, moving mirror back to start')
+            self.mirror.pitch.mv(self.mirror_start, wait=True)
             self.sig_finished.emit()
 
     def cancel(self):

@@ -245,7 +245,8 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         # open message box to allow for cancellation
         self.alignment_message = QtWidgets.QMessageBox()
         # Object to run alignment in a separate thread
-        self.align = Alignment(self.imager, self.curr_imager_dict, calibrate=self.calibrateCheckBox.isChecked())
+        self.align = Alignment(self.imager, self.curr_imager_dict, calibrate=self.calibrateCheckBox.isChecked(),
+                               hutch=self.hutch)
         # connect to alignment finished signal
         self.align.sig_finished.connect(self.alignment_finished)
 
