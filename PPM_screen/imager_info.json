@@ -118,6 +118,12 @@
       "slit": "MFX:DG1:JAWS:",
       "calib_x": 0,
       "calib_y": 0
+    },
+    "mfx_dg2_yag": {
+      "prefix": "MFX:GIGE:DG2:YAG:",
+      "motor": "MFX:DG2:",
+      "mms_num": "08",
+      "slit": "MFX:DG2:JAWS:US:"
     }
 
   }
