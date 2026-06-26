@@ -402,12 +402,14 @@ class PPM_Device(PPM):
         if 'IM' in self.imager_prefix:
             self.state = EpicsSignalRO(self.imager_prefix+'MMS:STATE:GET_RBV')
         else:
-            self.state = EpicsSignalRO(imager_dict['motor']+'PIM.VAL')
+            self.state = EpicsSignalRO(imager_dict['motor']+'PIM.VAL',string=True)
         # define possible states depending on imager type
         if 'XTES' in self.imager_prefix:
             self.states_list = ['Unknown', 'OUT', 'YAG', 'DIAMOND', 'RETICLE']
         elif 'PPM' in self.imager_prefix:
             self.states_list = ['Unknown', 'OUT', 'POWERMETER', 'YAG1', 'YAG2']
+        elif 'MFX' in self.imager_prefix:
+            self.states_list = ['Unknown', 'YAG', 'OUT']
         else:
             self.states_list = ['Unknown','DIODE','YAG','OUT']
 
@@ -828,8 +830,11 @@ class PPM_Device(PPM):
             imager_state = 'YAG'
         elif 'IM' in self.imager_prefix:
             imager_state = self.states_list[self.state.get()]
+        elif 'MEC' in self.imager_prefix:
+            imager_state = 'YAG'
         else:
-            imager_state = self.states_list[self.state.get()]
+            #imager_state = self.states_list[self.state.get()]
+            imager_state = self.state.get()
         imager_in = 'YAG' in imager_state or 'DIAMOND' in imager_state
 
         self.centroid_is_valid = self.centroid_is_valid and imager_in

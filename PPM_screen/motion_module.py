@@ -23,8 +23,10 @@ class Alignment(QtCore.QObject):
 
         self.imager_name = imager_name
         self.imager_prefix = curr_imager_dict['prefix']
-        mirror_prefix = curr_imager_dict['mirror']
-        self.mirror = Mirror(mirror_prefix)
+
+        self.hutch = hutch
+        self.mirror_prefix = curr_imager_dict['mirror']
+        self.mirror = Mirror(self.mirror_prefix)
         self.undulator = None
         self.calibrate = calibrate
         # check if calibration exists in the file
@@ -45,6 +47,11 @@ class Alignment(QtCore.QObject):
         else:
             self.calib_y = 0
             self.calibrate = True
+
+        if 'tol' in curr_imager_dict.keys():
+            self.tol = float(curr_imager_dict['tol'])
+        else:
+            self.tol = 100
         self.error_x= None
         self.new_error_x= None
         self.error_y = None
@@ -52,9 +59,8 @@ class Alignment(QtCore.QObject):
         self.mirror_start = None
         self.undx_total = None
         self.undy_total = None
-        self.hutch = hutch
 
-        if mirror_prefix == 'und':
+        if self.mirror_prefix == 'und' or self.hutch == 'mfx':
             # relative undulator pointing object
             self.undulator = UndPointDelta2D(prefix="MFX:USER:MCC:UND",name='undulator')
 
@@ -70,12 +76,18 @@ class Alignment(QtCore.QObject):
         self.x_target = SignalRO(self.cam_name+'X_RTCL_CTR').get()
         self.y_target = SignalRO(self.cam_name+'Y_RTCL_CTR').get()
         # PVs corresponding to calculated beam centroid
-        x_centroid = SignalRO(self.cam_name+'X_BM_CTR')
-        y_centroid = SignalRO(self.cam_name+'Y_BM_CTR')
+        self.x_centroid = SignalRO(self.cam_name+'X_BM_CTR')
+        self.y_centroid = SignalRO(self.cam_name+'Y_BM_CTR')
 
         # AvgSignals for beam centroid
-        self.avg_x_centroid = AvgSignal(x_centroid, 10, 2, name='avg_x_centroid')
-        self.avg_y_centroid = AvgSignal(y_centroid, 10, 2, name='avg_y_centroid')
+        self.avg_x_centroid = AvgSignal(self.x_centroid, 10, 2, name='avg_x_centroid')
+        self.avg_y_centroid = AvgSignal(self.y_centroid, 10, 2, name='avg_y_centroid')
+
+    def change_duration(self, duration=2):
+        # AvgSignals for beam centroid
+        self.avg_x_centroid = AvgSignal(self.x_centroid, duration*5, duration, name='avg_x_centroid')
+        self.avg_y_centroid = AvgSignal(self.y_centroid, duration*5, duration, name='avg_y_centroid')
+
 
     def get_centroid(self):
         """
@@ -102,7 +114,7 @@ class Alignment(QtCore.QObject):
         """
 
         self.running = True
-        if self.undulator is not None:
+        if self.mirror_prefix == 'und':
             self._und_run()
         elif self.hutch=='mfx':
             self._combined_run()
@@ -126,6 +138,12 @@ class Alignment(QtCore.QObject):
             print(self.mirror.pitch.get())
             self.mirror_start = self.mirror.pitch.get()
             if self.calibrate:
+                self.change_duration(duration=5)
+                cen_x, cen_y = self.get_centroid()
+                print(cen_x - self.x_target)
+
+                self.error_x = cen_x - self.x_target
+
                 print('moving mirror positive')
                 self.mirror.pitch.mvr(1, wait=True)
                 cen_x, cen_y = self.get_centroid()
@@ -146,6 +164,7 @@ class Alignment(QtCore.QObject):
                 print('calibration: {} um/urad'.format(self.calib_x))
                 # save the calibration to file
                 self.save_calibration()
+                self.change_duration(duration=2)
             else:
                 self.new_error_x = np.copy(self.error_x)
             # start loop for mirror adjustment
@@ -182,7 +201,7 @@ class Alignment(QtCore.QObject):
             self.new_error_x= cen_x - self.x_target
             print('Error from target: {}'.format(self.new_error_x))
             # make another adjustment if we are more than 20um from the target
-            if np.abs(self.new_error_x)>20:
+            if np.abs(self.new_error_x)>self.tol:
                 QtCore.QTimer.singleShot(200, self._update)
             else:
                 print('alignment completed')
@@ -208,35 +227,45 @@ class Alignment(QtCore.QObject):
             self.error_x= cen_x - self.x_target
             self.error_y = cen_y - self.y_target
             if self.calibrate:
+                self.change_duration(duration=5)
+                cen_x, cen_y = self.get_centroid()
+
+                self.error_x = cen_x - self.x_target
+                self.error_y = cen_y - self.y_target
+
                 print('moving undulator positive')
-                self.undulator.move(position=(20,20),wait=True)
+                self.undulator.move(position=(50,50),wait=True)
+                time.sleep(1)
                 cen_x, cen_y = self.get_centroid()
                 self.new_error_x = cen_x - self.x_target
                 self.new_error_y = cen_y - self.y_target
                 # calculate calibration for horizontal
-                calib_x1 = (self.new_error_x - self.error_x) / 20
+                calib_x1 = (self.new_error_x - self.error_x) / 50
                 # calculate calibration for vertical
-                calib_y1 = (self.new_error_y - self.error_y) / 20
+                calib_y1 = (self.new_error_y - self.error_y) / 50
 
                 # update old position error
                 self.error_x = np.copy(self.new_error_x)
                 self.error_y = np.copy(self.new_error_y)
 
                 print('moving undulator negative')
-                self.undulator.move(position=(-20, -20), wait=True)
+                self.undulator.move(position=(-50, -50), wait=True)
+                time.sleep(1)
                 cen_x, cen_y = self.get_centroid()
                 self.new_error_x = cen_x - self.x_target
                 self.new_error_y = cen_y - self.y_target
                 # calculate calibration for horizontal
-                calib_x2 = (self.new_error_x - self.error_x) / (-20)
+                calib_x2 = (self.new_error_x - self.error_x) / (-50)
                 # calculate calibration for vertical
-                calib_y2 = (self.new_error_y - self.error_y) / (-20)
+                calib_y2 = (self.new_error_y - self.error_y) / (-50)
 
                 self.calib_x = (calib_x1 + calib_x2) / 2
                 self.calib_y = (calib_y1 + calib_y2) / 2
                 print('calibration: {} um/um'.format(self.calib_x))
+                print('calibration for y: {} um/um'.format(self.calib_y))
                 # save the calibration to file
                 self.save_calibration()
+                self.change_duration(duration=2)
             else:
                 self.new_error_x = np.copy(self.error_x)
                 self.new_error_y = np.copy(self.error_y)
@@ -272,13 +301,14 @@ class Alignment(QtCore.QObject):
                 adj_y = np.sign(adj_y)*50
             # make the adjustment and wait for move to finish
             self.undulator.move((adj,adj_y), wait=True)
+            time.sleep(.5)
             cen_x, cen_y = self.get_centroid()
             self.new_error_x= cen_x - self.x_target
             self.new_error_y = cen_y - self.y_target
             print('Error from X target: {}um'.format(self.new_error_x))
             print('Error from Y target: {}um'.format(self.new_error_y))
             # make another adjustment if we are not within the tolerance
-            if np.abs(self.new_error_x)>20 or np.abs(self.new_error_y)>20:
+            if np.abs(self.new_error_x)>self.tol or np.abs(self.new_error_y)>self.tol:
                 QtCore.QTimer.singleShot(200, self._und_update)
             else:
                 print('alignment completed')
@@ -305,50 +335,62 @@ class Alignment(QtCore.QObject):
             self.mirror_start = self.mirror.pitch.get()
 
             if self.calibrate:
+                self.change_duration(duration=5)
+                cen_x, cen_y = self.get_centroid()
+
+                self.error_x = cen_x - self.x_target
+                self.error_y = cen_y - self.y_target
+
                 print('moving mirror positive')
-                self.mirror.pitch.mvr(1, wait=True)
+                self.mirror.pitch.mvr(3, wait=True)
                 cen_x, cen_y = self.get_centroid()
                 self.new_error_x = cen_x - self.x_target
                 # calculate um/urad
-                calib1 = (self.new_error_x - self.error_x) / 1
+                calib1 = (self.new_error_x - self.error_x) / 3
 
                 # update old position error
                 self.error_x = np.copy(self.new_error_x)
+                print(self.error_x)
 
                 print('moving mirror negative')
-                self.mirror.pitch.mvr(-1, wait=True)
+                self.mirror.pitch.mvr(-3, wait=True)
                 cen_x, cen_y = self.get_centroid()
                 self.new_error_x = cen_x - self.x_target
                 # calculate um/urad
-                calib2 = (self.new_error_x - self.error_x) / (-1)
+                calib2 = (self.new_error_x - self.error_x) / (-3)
                 self.calib_x = (calib1+calib2)/2
                 print('calibration: {} um/urad'.format(self.calib_x))
                 # save the calibration to file
 
                 print('moving undulator positive')
-                self.undulator.move(position=(0, 20), wait=True)
+                self.undulator.move(position=(0, 50), wait=True)
+                time.sleep(1)
                 cen_x, cen_y = self.get_centroid()
                 self.new_error_y = cen_y - self.y_target
                 # calculate calibration for vertical
-                calib_y1 = (self.new_error_y - self.error_y) / 20
+                calib_y1 = (self.new_error_y - self.error_y) / 50
 
                 # update old position error
                 self.error_y = np.copy(self.new_error_y)
+                print(self.error_y)
 
                 print('moving undulator negative')
-                self.undulator.move(position=(0, -20), wait=True)
+                self.undulator.move(position=(0, -50), wait=True)
+                time.sleep(1)
                 cen_x, cen_y = self.get_centroid()
                 self.new_error_y = cen_y - self.y_target
                 # calculate calibration for vertical
-                calib_y2 = (self.new_error_y - self.error_y) / (-20)
+                calib_y2 = (self.new_error_y - self.error_y) / (-50)
                 self.calib_y = (calib_y1 + calib_y2) / 2
+                print('und calibration: {} um/um'.format(self.calib_y))
 
                 self.save_calibration()
+                self.change_duration(duration=2)
             else:
                 self.new_error_x = np.copy(self.error_x)
                 self.new_error_y = np.copy(self.error_y)
             # start loop for mirror adjustment
-            self._update()
+            self._combined_update()
         else:
             self.sig_finished.emit()
 
@@ -382,14 +424,15 @@ class Alignment(QtCore.QObject):
                 adj_y = np.sign(adj_y)*50
             self.mirror.pitch.mvr(adj, wait=True)
             self.undulator.move((0,adj_y),wait=True)
+            time.sleep(0.5)
             cen_x, cen_y = self.get_centroid()
             self.new_error_x = cen_x - self.x_target
             self.new_error_y = cen_y - self.y_target
             print('Error from X target: {}'.format(self.new_error_x))
             print('Error from Y target: {}um'.format(self.new_error_y))
             # make another adjustment if we are more than 20um from the target
-            if np.abs(self.new_error_x)>20 or np.abs(self.new_error_y)>20:
-                QtCore.QTimer.singleShot(200, self._update)
+            if np.abs(self.new_error_x)>self.tol or np.abs(self.new_error_y)>self.tol:
+                QtCore.QTimer.singleShot(200, self._combined_update)
             else:
                 print('alignment completed')
 
@@ -407,6 +450,7 @@ class Alignment(QtCore.QObject):
                 Method to save the current image orientation.
                 """
         # get current file contents
+        print(local_path)
         try:
             with open(local_path + '/imager_info.json') as json_file:
                 data = json.load(json_file)
@@ -429,7 +473,7 @@ class Alignment(QtCore.QObject):
         data[curr_line][self.imager_name]['calib_y'] = self.calib_y
 
         # write to the file under the corresponding imager field
-        with open('imager_info.json', 'w') as outfile:
+        with open(local_path + '/imager_info.json', 'w') as outfile:
             json.dump(data, outfile, indent=4)
 
 
