@@ -235,6 +235,11 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.attenuate_thread.wait()
         self.applyTransmissionButton.setEnabled(True)
 
+    @QtCore.pyqtSlot(str) 
+    def display_message(self, message):
+        #self.messageLabel.setText(message)
+        self.statusbar.showMessage(message)
+
     def run_align(self):
         """
         Method to run alignment routine upon button click
@@ -249,6 +254,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
                                hutch=self.hutch)
         # connect to alignment finished signal
         self.align.sig_finished.connect(self.alignment_finished)
+        self.align.sig_message.connect(self.display_message)
 
         # initialize a new thread
         self.alignment_thread = QtCore.QThread()
@@ -563,7 +569,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def enable_run_button(self):
         #self.runButton.setEnabled(True)
-        self.statusbar.clearMessage()
+        #self.statusbar.clearMessage()
         #if self.runButton.text() == 'Stop':
             #self.alignmentButton.setEnabled(True)
         self.enable_align()
@@ -574,6 +580,12 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def reset_plots(self):
         self.reset_sig.emit()
+
+    @QtCore.pyqtSlot(str)
+    def display_proc_message(self, message):
+        #self.messageLabel.setText(message)
+        self.statusbar.showMessage(message)
+        print('display: {}'.format(message))
 
     def start_thread(self):
 
@@ -589,6 +601,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # connect processing object to plotting function
         self.processing.sig.connect(self.update_plots)
+        self.processing.sig_message.connect(self.display_proc_message)
         
         # connect to initialized signal
         self.processing.sig_initialized.connect(self.enable_run_button)
@@ -628,7 +641,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         self.imagerStats.roiCheckBox.setEnabled(False)
         self.imagerStats.thresholdLineEdit.setEnabled(False)
 
-        self.statusbar.showMessage('Starting acquisition...')
+        #self.statusbar.showMessage('Starting acquisition...')
 
 
     def change_state(self, run=True):
@@ -649,7 +662,7 @@ class PPM_Interface(QtWidgets.QMainWindow, Ui_MainWindow):
         else:
             print('stopping')
             self.kill_sig.emit()
-            self.statusbar.showMessage('Stopping acquisition...')
+            #self.statusbar.showMessage('Stopping acquisition...')
 
             self.alignmentButton.setEnabled(False)
 

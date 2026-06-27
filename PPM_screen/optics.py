@@ -425,6 +425,7 @@ class PPM_Device(PPM):
         self.epics_name = self.cam_name + 'IMAGE1:'
         # get acquisition info (this is in seconds)
         self.acquisition_period = PV(self.epics_name[:-7] + 'AcquirePeriod_RBV').get()
+        self.array_rate = PV(self.epics_name + 'ArrayRate_RBV').get()
 
         # check if Image3 is available
         port = PV(self.epics_name + 'PortName_RBV').get()
@@ -433,6 +434,7 @@ class PPM_Device(PPM):
         if port is None or array_rate==0:
             self.epics_name = self.cam_name + 'IMAGE1:'
             self.acquisition_period = PV(self.cam_name + 'AcquirePeriod_RBV').get()
+            self.array_rate = PV(self.epics_name + 'ArrayRate_RBV').get()
 
         port = PV(self.epics_name + 'PortName_RBV').get()
 
@@ -442,12 +444,14 @@ class PPM_Device(PPM):
         if port is None or array_rate==0:
             self.epics_name = self.cam_name + 'IMAGE2:'
             self.acquisition_period = PV(self.cam_name + 'AcquirePeriod_RBV').get()
+            self.array_rate = PV(self.epics_name + 'ArrayRate_RBV').get()
 
         port = PV(self.epics_name + 'PortName_RBV').get()
 
         if port is None:
             self.epics_name = self.imager_prefix + 'IMAGE1:'
             self.acquisition_period = PV(self.imager_prefix + 'AcquirePeriod_RBV').get()
+            self.array_rate = PV(self.epics_name + 'ArrayRate_RBV')
        
         if 'IM' in self.cam_name: 
             self.x_bm_ctr = PV(self.cam_name + 'X_BM_CTR')

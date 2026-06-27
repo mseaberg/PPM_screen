@@ -18,6 +18,7 @@ class RunProcessing(QtCore.QObject):
     sig = QtCore.pyqtSignal()
     sig_initialized = QtCore.pyqtSignal()
     sig_finished = QtCore.pyqtSignal()
+    sig_message = QtCore.pyqtSignal(str)
 
     def __init__(self, imager_dict, data_handler, averageWidget, wfs_name=None, threshold=0.1, focusFOV=10, fraction=1, focus_z=0, displayWidget=None, thread=None, hutch=None, crossWidget=None):
         super(RunProcessing, self).__init__()
@@ -77,7 +78,7 @@ class RunProcessing(QtCore.QObject):
         # self._update()
 
     def run(self):
-       
+      
         # check if data handler is initialized
         if self.data_handler.initialized:
             # just update PPM object
@@ -88,10 +89,16 @@ class RunProcessing(QtCore.QObject):
 
         self.running = True
         self.sig_initialized.emit()
+        
+        array_rate = self.PPM_object.array_rate
+        if array_rate is None:
+            array_rate = 5
 
         self.timer = QtCore.QTimer()
         if self.hutch=='lfe':
             self.timer.setInterval(2000)
+        elif array_rate < 5:
+            self.timer.setInterval(1000/array_rate)
         else:
             self.timer.setInterval(200)
         self.timer.timeout.connect(self._update)

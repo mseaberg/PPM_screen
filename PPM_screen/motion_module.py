@@ -13,6 +13,7 @@ local_path = os.path.dirname(os.path.abspath(__file__))
 class Alignment(QtCore.QObject):
 
     sig_finished = QtCore.pyqtSignal()
+    sig_message = QtCore.pyqtSignal(str)
 
     def __init__(self, imager_name: str, curr_imager_dict: dict, calibrate=False, hutch=None):
         """
@@ -26,7 +27,7 @@ class Alignment(QtCore.QObject):
 
         self.hutch = hutch
         self.mirror_prefix = curr_imager_dict['mirror']
-        self.mirror = Mirror(self.mirror_prefix)
+        self.mirror = Mirror(self.mirror_prefix, name=self.mirror_prefix[0:5])
         self.undulator = None
         self.calibrate = calibrate
         # check if calibration exists in the file
@@ -143,7 +144,7 @@ class Alignment(QtCore.QObject):
                 print(cen_x - self.x_target)
 
                 self.error_x = cen_x - self.x_target
-
+                self.sig_message.emit('Calibrating mirror motion...')    
                 print('moving mirror positive')
                 self.mirror.pitch.mvr(1, wait=True)
                 cen_x, cen_y = self.get_centroid()
@@ -164,6 +165,7 @@ class Alignment(QtCore.QObject):
                 print('calibration: {} um/urad'.format(self.calib_x))
                 # save the calibration to file
                 self.save_calibration()
+                self.sig_message.emit('Calibration complete')
                 self.change_duration(duration=2)
             else:
                 self.new_error_x = np.copy(self.error_x)
@@ -180,6 +182,7 @@ class Alignment(QtCore.QObject):
         if self.running:
             # check if beam centroid is valid or not. Cancel if not
             if np.isnan(self.new_error_x):
+                self.sig_message.emit('Beam down? Canceling...')
                 print('Beam down? Canceling...')
                 self.mirror.pitch.mv(self.mirror_start, wait=True)
                 self.sig_finished.emit()
@@ -193,9 +196,12 @@ class Alignment(QtCore.QObject):
                 return
 
             print('Adjusting {} by {}'.format(self.mirror.name, adj))
+
             # ensure adjustments aren't too large
             if np.abs(adj)>2:
                 adj = np.sign(adj)*2
+
+            self.sig_message.emit('Adjusting {} by {}'.format(self.mirror.name, adj))
             self.mirror.pitch.mvr(adj, wait=True)
             cen_x, cen_y = self.get_centroid()
             self.new_error_x= cen_x - self.x_target
@@ -204,11 +210,14 @@ class Alignment(QtCore.QObject):
             if np.abs(self.new_error_x)>self.tol:
                 QtCore.QTimer.singleShot(200, self._update)
             else:
+                self.sig_message.emit('Alignment completed')
                 print('alignment completed')
 
                 self.sig_finished.emit()
         else:
             print('Alignment canceled, moving back to start')
+            self.sig_message.emit('Alignment canceled, moving back to start')
+
             self.mirror.pitch.mv(self.mirror_start, wait=True)
             self.sig_finished.emit()
 
@@ -233,6 +242,7 @@ class Alignment(QtCore.QObject):
                 self.error_x = cen_x - self.x_target
                 self.error_y = cen_y - self.y_target
 
+                self.sig_message.emit('Calibrating undulator motion...')
                 print('moving undulator positive')
                 self.undulator.move(position=(50,50),wait=True)
                 time.sleep(1)
@@ -265,6 +275,7 @@ class Alignment(QtCore.QObject):
                 print('calibration for y: {} um/um'.format(self.calib_y))
                 # save the calibration to file
                 self.save_calibration()
+                self.sig_message.emit('Calibration complete')
                 self.change_duration(duration=2)
             else:
                 self.new_error_x = np.copy(self.error_x)
@@ -280,6 +291,7 @@ class Alignment(QtCore.QObject):
         if self.running:
             # cancel if centroids are not valid
             if np.isnan(self.new_error_x):
+                self.sig_message.emit('Beam down? Canceling...')
                 print('Beam down? Canceling...')
                 self.sig_finished.emit()
                 return
@@ -299,6 +311,7 @@ class Alignment(QtCore.QObject):
                 adj = np.sign(adj)*50
             if np.abs(adj_y)>50:
                 adj_y = np.sign(adj_y)*50
+            self.sig_message.emit('Adjusting by {}um x {}um'.format(adj,adj_y))
             # make the adjustment and wait for move to finish
             self.undulator.move((adj,adj_y), wait=True)
             time.sleep(.5)
@@ -312,6 +325,7 @@ class Alignment(QtCore.QObject):
                 QtCore.QTimer.singleShot(200, self._und_update)
             else:
                 print('alignment completed')
+                self.sig_message.emit('Alignment complete')
 
                 self.sig_finished.emit()
         else:
@@ -340,7 +354,7 @@ class Alignment(QtCore.QObject):
 
                 self.error_x = cen_x - self.x_target
                 self.error_y = cen_y - self.y_target
-
+                self.sig_message.emit('Calibrating mirror motion...')
                 print('moving mirror positive')
                 self.mirror.pitch.mvr(3, wait=True)
                 cen_x, cen_y = self.get_centroid()
@@ -361,7 +375,7 @@ class Alignment(QtCore.QObject):
                 self.calib_x = (calib1+calib2)/2
                 print('calibration: {} um/urad'.format(self.calib_x))
                 # save the calibration to file
-
+                self.sig_message.emit('Calibrating undulator motion...')
                 print('moving undulator positive')
                 self.undulator.move(position=(0, 50), wait=True)
                 time.sleep(1)
@@ -383,8 +397,9 @@ class Alignment(QtCore.QObject):
                 calib_y2 = (self.new_error_y - self.error_y) / (-50)
                 self.calib_y = (calib_y1 + calib_y2) / 2
                 print('und calibration: {} um/um'.format(self.calib_y))
-
+            
                 self.save_calibration()
+                self.sig_message.emit('Calibration complete')
                 self.change_duration(duration=2)
             else:
                 self.new_error_x = np.copy(self.error_x)
@@ -403,6 +418,7 @@ class Alignment(QtCore.QObject):
             # check if beam centroid is valid or not. Cancel if not
             if np.isnan(self.new_error_x):
                 print('Beam down? Canceling...')
+                self.sig_message.emit('Beam down? Canceling...')
                 self.mirror.pitch.mv(self.mirror_start, wait=True)
                 self.sig_finished.emit()
                 return
@@ -422,6 +438,7 @@ class Alignment(QtCore.QObject):
                 adj = np.sign(adj)*2
             if np.abs(adj_y)>50:
                 adj_y = np.sign(adj_y)*50
+            self.sig_message.emit('Adjusting mirror by {}, undulator by {}'.format(adj, adj_y))
             self.mirror.pitch.mvr(adj, wait=True)
             self.undulator.move((0,adj_y),wait=True)
             time.sleep(0.5)
@@ -435,9 +452,11 @@ class Alignment(QtCore.QObject):
                 QtCore.QTimer.singleShot(200, self._combined_update)
             else:
                 print('alignment completed')
+                self.sig_message.emit('Alignment complete')
 
                 self.sig_finished.emit()
         else:
+            self.sig_message.emit('Canceled')
             print('Alignment canceled, moving mirror back to start')
             self.mirror.pitch.mv(self.mirror_start, wait=True)
             self.sig_finished.emit()

@@ -6,7 +6,6 @@
 
 #source /cds/home/s/seaberg/beamlineconda.sh
 source /reg/g/pcds/pyps/apps/hutch-python/xcs/xcsenv
-export PYTHONPATH=$PYTHONPATH:/cds/home/s/seaberg/Python/PPM_screen
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export OMP_NUM_THREADS=1
@@ -15,6 +14,7 @@ export OMP_NUM_THREADS=1
 #parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 HERE=`dirname $(readlink -f $0)`
 
+export PYTHONPATH=$PYTHONPATH:$HERE/../
 
 #cd "$parent_path"
 #cd ../PPM_screen
